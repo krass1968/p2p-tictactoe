@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Крестики-Нолики v2.0</title>
+    <title>Крестики-Нолики v2.1</title>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; font-family: sans-serif; }
@@ -22,10 +22,9 @@
 </head>
 <body>
 
-    <h1>❌⭕ Крестики-Нолики <span class="version">v2.0</span></h1>
+    <h1>❌⭕ Крестики-Нолики <span class="version">v2.1</span></h1>
 
     <div class="game-card">
-        <!-- Дефолтный текст сразу правильный для каждого -->
         <div id="status">Инициализация...</div>
         
         <button id="invite-btn" class="btn-invite hidden" onclick="copyLink()">🔗 Пригласить друга</button>
@@ -57,8 +56,8 @@
         let boardState = Array(9).fill(null);
         let gameReady = false;
         let gameOver = false;
+        let joinInterval = null;
 
-        // СРАЗУ выставляем интерфейс до всяких ответов от серверов
         const statusEl = document.getElementById('status');
         const inviteBtn = document.getElementById('invite-btn');
 
@@ -82,15 +81,19 @@
             .on('broadcast', { event: 'game' }, (payload) => {
                 const data = payload?.payload ?? payload;
 
+                // Хост ловит стук от гостя
                 if (data.type === 'join' && isHost) {
                     gameReady = true;
                     inviteBtn.classList.add('hidden');
+                    // Отвечаем гостю, что игра началась
                     channel.send({ type: 'broadcast', event: 'game', payload: { type: 'start' } });
                     updateStatus();
                 }
 
+                // Гость ловит ответ от хоста
                 if (data.type === 'start' && !isHost) {
                     gameReady = true;
+                    if (joinInterval) clearInterval(joinInterval); // Перестаем "стучаться"
                     inviteBtn.classList.add('hidden');
                     updateStatus();
                 }
@@ -108,10 +111,17 @@
             })
             .subscribe((status) => {
                 if (status === 'SUBSCRIBED' && !isHost) {
-                    // Гость сообщает хосту, что зашел в комнату
-                    channel.send({ type: 'broadcast', event: 'game', payload: { type: 'join' } });
+                    // Гость начнет стучаться каждые 1.5 сек, пока хост не ответит
+                    sendJoinSignal();
+                    joinInterval = setInterval(sendJoinSignal, 1500);
                 }
             });
+
+        function sendJoinSignal() {
+            if (!gameReady) {
+                channel.send({ type: 'broadcast', event: 'game', payload: { type: 'join' } });
+            }
+        }
 
         function copyLink() {
             const link = `${window.location.origin}${window.location.pathname}?room=${roomId}`;
