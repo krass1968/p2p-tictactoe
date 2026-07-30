@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Крестики-Нолики v1.4</title>
+    <title>Крестики-Нолики v1.5</title>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; font-family: sans-serif; }
@@ -22,7 +22,7 @@
 </head>
 <body>
 
-    <h1>❌⭕ Крестики-Нолики <span class="version">v1.4</span></h1>
+    <h1>❌⭕ Крестики-Нолики <span class="version">v1.5</span></h1>
 
     <div class="game-card">
         <div id="status">Подключение...</div>
@@ -56,7 +56,11 @@
         let boardState = Array(9).fill(null);
         let gameReady = false;
 
-        const client = window.supabase.createClient('https://dmyudoxgljhfgasvvuvd.supabase.co', 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRteXVkb3hnbGpoZmdhc3Z2dXZkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzgxOTgwMTUsImV4cCI6MjA1Mzc3NDAxNX0.zV_7-B9J1pB3Z-aE5X9eO1d4lM8C6F2G1H0I3J4K5L6');
+        // Рабочий рабочий инстанс Supabase
+        const SUPABASE_URL = 'https://dmyudoxgljhfgasvvuvd.supabase.co';
+        const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRteXVkb3hnbGpoZmdhc3Z2dXZkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzgxOTgwMTUsImV4cCI6MjA1Mzc3NDAxNX0.zV_7-B9J1pB3Z-aE5X9eO1d4lM8C6F2G1H0I3J4K5L6';
+
+        const client = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
         
         const channel = client.channel(`room_${roomId}`, {
             config: { broadcast: { self: false } }
