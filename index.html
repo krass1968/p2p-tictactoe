@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Крестики-Нолики v1.9</title>
+    <title>Крестики-Нолики v2.0</title>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; font-family: sans-serif; }
@@ -22,10 +22,11 @@
 </head>
 <body>
 
-    <h1>❌⭕ Крестики-Нолики <span class="version">v1.9</span></h1>
+    <h1>❌⭕ Крестики-Нолики <span class="version">v2.0</span></h1>
 
     <div class="game-card">
-        <div id="status">Подключение к сети...</div>
+        <!-- Дефолтный текст сразу правильный для каждого -->
+        <div id="status">Инициализация...</div>
         
         <button id="invite-btn" class="btn-invite hidden" onclick="copyLink()">🔗 Пригласить друга</button>
 
@@ -47,7 +48,6 @@
         let roomId = urlParams.get('room');
         const isHost = !roomId;
 
-        // Если это хост — при каждом старте создается уникальный ID комнаты
         if (isHost) {
             roomId = Math.random().toString(36).substring(2, 9);
         }
@@ -57,6 +57,17 @@
         let boardState = Array(9).fill(null);
         let gameReady = false;
         let gameOver = false;
+
+        // СРАЗУ выставляем интерфейс до всяких ответов от серверов
+        const statusEl = document.getElementById('status');
+        const inviteBtn = document.getElementById('invite-btn');
+
+        if (isHost) {
+            statusEl.innerText = 'Ожидание соперника...';
+            inviteBtn.classList.remove('hidden');
+        } else {
+            statusEl.innerText = 'Подключение к хосту...';
+        }
 
         const client = window.supabase.createClient(
             'https://dmyudoxgljhfgasvvuvd.supabase.co', 
@@ -73,14 +84,14 @@
 
                 if (data.type === 'join' && isHost) {
                     gameReady = true;
-                    document.getElementById('invite-btn').classList.add('hidden');
+                    inviteBtn.classList.add('hidden');
                     channel.send({ type: 'broadcast', event: 'game', payload: { type: 'start' } });
                     updateStatus();
                 }
 
                 if (data.type === 'start' && !isHost) {
                     gameReady = true;
-                    document.getElementById('invite-btn').classList.add('hidden');
+                    inviteBtn.classList.add('hidden');
                     updateStatus();
                 }
 
@@ -96,20 +107,16 @@
                 }
             })
             .subscribe((status) => {
-                if (status === 'SUBSCRIBED') {
-                    if (isHost) {
-                        document.getElementById('invite-btn').classList.remove('hidden');
-                    } else {
-                        channel.send({ type: 'broadcast', event: 'game', payload: { type: 'join' } });
-                    }
-                    updateStatus();
+                if (status === 'SUBSCRIBED' && !isHost) {
+                    // Гость сообщает хосту, что зашел в комнату
+                    channel.send({ type: 'broadcast', event: 'game', payload: { type: 'join' } });
                 }
             });
 
         function copyLink() {
             const link = `${window.location.origin}${window.location.pathname}?room=${roomId}`;
             navigator.clipboard.writeText(link);
-            alert('Новая уникальная ссылка скопирована!');
+            alert('Ссылка скопирована!');
         }
 
         function makeMove(index) {
@@ -136,8 +143,6 @@
         }
 
         function updateStatus() {
-            const statusEl = document.getElementById('status');
-            
             if (!gameReady) {
                 statusEl.innerText = isHost ? 'Ожидание соперника...' : 'Подключение к хосту...';
                 statusEl.style.color = '#666';
@@ -182,7 +187,6 @@
         }
 
         function resetGame() {
-            // Хост сбрасывает параметры URL, чтобы начать чистую игру с НОВОЙ ссылкой
             if (isHost) {
                 location.href = window.location.pathname;
             } else {
