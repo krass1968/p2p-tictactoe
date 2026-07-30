@@ -120,19 +120,32 @@
   .cell.win{background:#e4f7ea;}
   .board.disabled .cell:hover{background:var(--cell);}
 
+  .rematch-btn{
+    display:none;
+    width:100%;
+    margin-top:18px;
+    border:none;
+    border-radius:14px;
+    padding:14px 16px;
+    font-size:15px;
+    font-weight:700;
+    color:var(--blue);
+    background:#eaf2fe;
+    cursor:pointer;
+    align-items:center;
+    justify-content:center;
+    gap:8px;
+    transition:background .15s ease, opacity .15s ease;
+  }
+  .rematch-btn:hover{background:#dcebfd;}
+  .rematch-btn:disabled{opacity:.5; cursor:default;}
+
   .info{
-    margin-top:20px;
+    margin-top:16px;
     text-align:center;
     font-size:13px;
     color:var(--muted);
     line-height:1.5;
-  }
-  .info code{
-    background:#f2f3f6;
-    padding:2px 6px;
-    border-radius:6px;
-    font-size:12px;
-    word-break:break-all;
   }
 
   .modal-backdrop{
@@ -213,6 +226,7 @@
   <div class="card">
     <p id="status" class="status waiting">Пригласите друга, чтобы начать</p>
     <div id="board" class="board disabled"></div>
+    <button id="rematchBtn" class="rematch-btn">🔄 Новая игра</button>
     <div class="info" id="infoLine"></div>
   </div>
 </div>
@@ -240,14 +254,15 @@
   const copyBtn = document.getElementById('copyBtn');
   const closeModal = document.getElementById('closeModal');
   const infoLine = document.getElementById('infoLine');
+  const rematchBtn = document.getElementById('rematchBtn');
 
   let cells = Array(9).fill(null);
   let peer = null;
   let conn = null;
-  let mySymbol = null;   // 'X' or 'O'
+  let mySymbol = null;   // 'X' or 'O', decided randomly each round
   let myTurn = false;
   let gameOver = false;
-  let isHost = false;
+  let isHost = false;    // connection role (fixed) — NOT the same as who plays X
 
   // build board cells
   for(let i=0;i<9;i++){
@@ -327,13 +342,23 @@
     }
   }
 
-  function resetGame(startingTurn){
+  function resetGame(){
     cells = Array(9).fill(null);
     gameOver = false;
     renderBoard();
     board.querySelectorAll('.cell').forEach(c=>c.classList.remove('win'));
-    myTurn = startingTurn;
+    myTurn = (mySymbol === 'X');
     updateTurnStatus();
+    infoLine.textContent = 'Вы играете за ' + mySymbol;
+    rematchBtn.disabled = false;
+  }
+
+  // Host is authoritative for randomly assigning who plays X each round
+  function hostAssignAndStart(){
+    const hostIsX = Math.random() < 0.5;
+    mySymbol = hostIsX ? 'X' : 'O';
+    conn.send({type:'assign', symbol: hostIsX ? 'O' : 'X'});
+    resetGame();
   }
 
   function setupConnectionHandlers(){
@@ -342,25 +367,37 @@
         applyMove(data.index, data.symbol);
         myTurn = true;
         updateTurnStatus();
-      } else if(data.type === 'rematch'){
-        resetGame(!isHost); // alternate who starts, guest starts this time logic simplified below
+      } else if(data.type === 'assign'){
+        mySymbol = data.symbol;
+        resetGame();
+      } else if(data.type === 'request_rematch'){
+        hostAssignAndStart();
       }
     });
     conn.on('close', () => {
       setStatus('Соперник отключился', 'lose');
       board.classList.add('disabled');
+      rematchBtn.style.display = 'none';
       inviteBtn.textContent = '🔗 Пригласить друга';
       inviteBtn.classList.remove('connected');
       inviteBtn.disabled = false;
+      inviteBtn.style.display = 'flex';
     });
   }
 
-  function onConnected(){
+  function onGuestConnected(){
+    inviteBtn.textContent = '✓ Подключено к сопернику';
+    inviteBtn.classList.add('connected');
+    setStatus('Подключено! Ждём раздачу ролей…', 'waiting');
+    rematchBtn.style.display = 'flex';
+  }
+
+  function onHostConnected(){
     inviteBtn.textContent = '✓ Соперник в игре';
     inviteBtn.classList.add('connected');
     modalBackdrop.classList.remove('show');
-    infoLine.textContent = 'Вы играете за ' + mySymbol;
-    resetGame(mySymbol === 'X');
+    rematchBtn.style.display = 'flex';
+    hostAssignAndStart();
   }
 
   // ---- Host flow ----
@@ -375,9 +412,8 @@
     peer.on('connection', c => {
       conn = c;
       isHost = true;
-      mySymbol = 'X';
       setupConnectionHandlers();
-      conn.on('open', onConnected);
+      conn.on('open', onHostConnected);
     });
     peer.on('error', err => {
       setStatus('Ошибка соединения: ' + err.type, 'lose');
@@ -387,18 +423,22 @@
 
   // ---- Guest flow ----
   function startGuest(hostId){
-    inviteBtn.style.display = 'none';
+    inviteBtn.disabled = true;
+    inviteBtn.textContent = '⏳ Подключение…';
     setStatus('Подключение к сопернику…', 'waiting');
     peer = new Peer();
     peer.on('open', () => {
       conn = peer.connect(hostId, {reliable:true});
       isHost = false;
-      mySymbol = 'O';
       setupConnectionHandlers();
-      conn.on('open', onConnected);
-      conn.on('error', () => setStatus('Не удалось подключиться', 'lose'));
+      conn.on('open', onGuestConnected);
+      conn.on('error', () => {
+        inviteBtn.textContent = '⚠ Не удалось подключиться';
+        setStatus('Не удалось подключиться', 'lose');
+      });
     });
     peer.on('error', err => {
+      inviteBtn.textContent = '⚠ Ошибка соединения';
       setStatus('Ошибка соединения: ' + err.type, 'lose');
     });
   }
@@ -406,6 +446,16 @@
   inviteBtn.addEventListener('click', () => {
     if(inviteBtn.classList.contains('connected')) return;
     startHost();
+  });
+
+  rematchBtn.addEventListener('click', () => {
+    if(!conn || !conn.open) return;
+    rematchBtn.disabled = true;
+    if(isHost){
+      hostAssignAndStart();
+    } else {
+      conn.send({type:'request_rematch'});
+    }
   });
 
   copyBtn.addEventListener('click', () => {
