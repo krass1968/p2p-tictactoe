@@ -3,8 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Крестики-Нолики v1.2</title>
-    <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+    <title>Крестики-Нолики v1.4</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; font-family: sans-serif; }
         body { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; background: #f0f2f5; padding: 20px; }
@@ -14,18 +14,18 @@
         #status { font-size: 15px; font-weight: bold; margin-bottom: 15px; color: #555; }
         .btn-invite { background: #007bff; color: white; border: none; padding: 12px 20px; font-size: 15px; border-radius: 10px; cursor: pointer; width: 100%; margin-bottom: 15px; font-weight: bold; }
         .btn-invite:hover { background: #0056b3; }
-        #board { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; width: 300px; height: 300px; margin: 0 auto; }
-        .cell { background: #f8f9fa; border: 2px solid #e9ecef; border-radius: 12px; font-size: 48px; font-weight: bold; display: flex; align-items: center; justify-content: center; cursor: pointer; user-select: none; color: #333; }
+        #board { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; width: 100%; margin: 0 auto; }
+        .cell { background: #f8f9fa; border: 2px solid #e9ecef; border-radius: 12px; font-size: 44px; font-weight: bold; display: flex; align-items: center; justify-content: center; cursor: pointer; user-select: none; color: #333; aspect-ratio: 1; }
         .cell:hover { background: #e9ecef; }
         .hidden { display: none !important; }
     </style>
 </head>
 <body>
 
-    <h1>❌⭕ Крестики-Нолики <span class="version">v1.2</span></h1>
+    <h1>❌⭕ Крестики-Нолики <span class="version">v1.4</span></h1>
 
     <div class="game-card">
-        <div id="status">Инициализация...</div>
+        <div id="status">Подключение...</div>
         
         <button id="invite-btn" class="btn-invite hidden" onclick="copyLink()">🔗 Пригласить друга</button>
 
@@ -47,43 +47,38 @@
         let roomId = urlParams.get('room');
         const isHost = !roomId;
 
+        if (isHost) {
+            roomId = Math.random().toString(36).substring(2, 9);
+        }
+
         const mySymbol = isHost ? 'X' : 'O';
         let currentTurn = 'X';
         let boardState = Array(9).fill(null);
-        let conn = null;
         let gameReady = false;
 
-        const peer = new Peer(isHost ? undefined : null, { debug: 2 });
-
-        peer.on('open', (id) => {
-            if (isHost) {
-                roomId = id;
-                document.getElementById('status').innerText = 'Ожидание соперника...';
-                document.getElementById('invite-btn').classList.remove('hidden');
-            } else {
-                document.getElementById('status').innerText = 'Подключение к хосту...';
-                conn = peer.connect(roomId, { reliable: true });
-                setupConnection();
-            }
+        const client = window.supabase.createClient('https://dmyudoxgljhfgasvvuvd.supabase.co', 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRteXVkb3hnbGpoZmdhc3Z2dXZkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzgxOTgwMTUsImV4cCI6MjA1Mzc3NDAxNX0.zV_7-B9J1pB3Z-aE5X9eO1d4lM8C6F2G1H0I3J4K5L6');
+        
+        const channel = client.channel(`room_${roomId}`, {
+            config: { broadcast: { self: false } }
         });
 
-        peer.on('connection', (c) => {
-            conn = c;
-            setupConnection();
-        });
+        channel
+            .on('broadcast', { event: 'game' }, (payload) => {
+                const data = payload.payload;
 
-        peer.on('error', (err) => {
-            document.getElementById('status').innerText = 'Ошибка сети: ' + err.type;
-        });
+                if (data.type === 'join' && isHost) {
+                    gameReady = true;
+                    document.getElementById('invite-btn').classList.add('hidden');
+                    channel.send({ type: 'broadcast', event: 'game', payload: { type: 'start' } });
+                    updateStatus();
+                }
 
-        function setupConnection() {
-            conn.on('open', () => {
-                gameReady = true;
-                document.getElementById('invite-btn').classList.add('hidden');
-                updateStatus();
-            });
+                if (data.type === 'start' && !isHost) {
+                    gameReady = true;
+                    document.getElementById('invite-btn').classList.add('hidden');
+                    updateStatus();
+                }
 
-            conn.on('data', (data) => {
                 if (data.type === 'move') {
                     boardState[data.index] = data.symbol;
                     currentTurn = data.symbol === 'X' ? 'O' : 'X';
@@ -91,13 +86,22 @@
                     checkWinner();
                     updateStatus();
                 }
+            })
+            .subscribe((status) => {
+                if (status === 'SUBSCRIBED') {
+                    if (isHost) {
+                        document.getElementById('status').innerText = 'Ожидание соперника...';
+                        document.getElementById('invite-btn').classList.remove('hidden');
+                    } else {
+                        channel.send({ type: 'broadcast', event: 'game', payload: { type: 'join' } });
+                    }
+                }
             });
-        }
 
         function copyLink() {
             const link = `${window.location.origin}${window.location.pathname}?room=${roomId}`;
             navigator.clipboard.writeText(link);
-            alert('Ссылка v1.2 скопирована!');
+            alert('Ссылка скопирована!');
         }
 
         function makeMove(index) {
@@ -109,9 +113,11 @@
             checkWinner();
             updateStatus();
 
-            if (conn && conn.open) {
-                conn.send({ type: 'move', index: index, symbol: mySymbol });
-            }
+            channel.send({
+                type: 'broadcast',
+                event: 'game',
+                payload: { type: 'move', index: index, symbol: mySymbol }
+            });
         }
 
         function renderBoard() {
