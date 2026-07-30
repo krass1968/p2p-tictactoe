@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>P2P Tic-Tac-Toe</title>
+    <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+    <style>
+        body { font-family: sans-serif; text-align: center; background: #f0f2f5; margin: 0; padding: 20px; }
+        .card { background: white; padding: 20px; border-radius: 12px; max-width: 400px; margin: 0 auto 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        .board { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; max-width: 300px; margin: 20px auto; }
+        .cell { width: 90px; height: 90px; font-size: 36px; font-weight: bold; display: flex; align-items: center; justify-content: center; background: #e9ecef; border-radius: 8px; cursor: pointer; user-select: none; }
+        .cell:hover { background: #dee2e6; }
+        input, button { padding: 10px; margin: 5px; font-size: 16px; border-radius: 6px; border: 1px solid #ccc; }
+        button { background: #007bff; color: white; border: none; cursor: pointer; }
+        button:hover { background: #0056b3; }
+        #status { font-weight: bold; margin: 15px 0; color: #333; }
+    </style>
+</head>
+<body>
+
+    <h1>❌⭕ P2P Крестики-Нолики</h1>
+
+    <div class="card">
+        <div id="status">Подключение к сети...</div>
+        <div>
+            <p>Ваш ID: <b id="my-id">...</b></p>
+            <input type="text" id="peer-id-input" placeholder="Введите ID соперника">
+            <button onclick="connectToPeer()">Подключиться</button>
+        </div>
+    </div>
+
+    <div class="board" id="board">
+        <div class="cell" onclick="makeMove(0)"></div>
+        <div class="cell" onclick="makeMove(1)"></div>
+        <div class="cell" onclick="makeMove(2)"></div>
+        <div class="cell" onclick="makeMove(3)"></div>
+        <div class="cell" onclick="makeMove(4)"></div>
+        <div class="cell" onclick="makeMove(5)"></div>
+        <div class="cell" onclick="makeMove(6)"></div>
+        <div class="cell" onclick="makeMove(7)"></div>
+        <div class="cell" onclick="makeMove(8)"></div>
+    </div>
+
+    <script>
+        let peer = new Peer();
+        let conn = null;
+        let mySymbol = '';
+        let currentTurn = 'X';
+        let gameState = ["", "", "", "", "", "", "", "", ""];
+        let gameActive = false;
+
+        peer.on('open', (id) => {
+            document.getElementById('my-id').innerText = id;
+            document.getElementById('status').innerText = 'Готов к подключению. Создайте или подключитесь!';
+        });
+
+        peer.on('connection', (c) => {
+            conn = c;
+            mySymbol = 'X';
+            setupConnection();
+            document.getElementById('status').innerText = 'Игрок подключился! Ваш ход (X)';
+            gameActive = true;
+        });
+
+        function connectToPeer() {
+            const destId = document.getElementById('peer-id-input').value;
+            if (!destId) return alert('Введите ID!');
+            conn = peer.connect(destId);
+            mySymbol = 'O';
+            setupConnection();
+        }
+
+        function setupConnection() {
+            conn.on('open', () => {
+                if (mySymbol === 'O') {
+                    document.getElementById('status').innerText = 'Подключено! Ход соперника (X)';
+                    gameActive = true;
+                }
+            });
+
+            conn.on('data', (data) => {
+                gameState[data.index] = data.symbol;
+                renderBoard();
+                if (checkWin()) {
+                    document.getElementById('status').innerText = `Игрок ${data.symbol} победил!`;
+                    gameActive = false;
+                } else if (gameState.every(cell => cell !== "")) {
+                    document.getElementById('status').innerText = 'Ничья!';
+                    gameActive = false;
+                } else {
+                    currentTurn = mySymbol;
+                    document.getElementById('status').innerText = `Ваш ход (${mySymbol})`;
+                }
+            });
+        }
+
+        function makeMove(index) {
+            if (!gameActive || gameState[index] !== "" || currentTurn !== mySymbol) return;
+
+            gameState[index] = mySymbol;
+            renderBoard();
+            conn.send({ index: index, symbol: mySymbol });
+
+            if (checkWin()) {
+                document.getElementById('status').innerText = `Вы победили! 🎉`;
+                gameActive = false;
+            } else if (gameState.every(cell => cell !== "")) {
+                document.getElementById('status').innerText = 'Ничья!';
+                gameActive = false;
+            } else {
+                currentTurn = mySymbol === 'X' ? 'O' : 'X';
+                document.getElementById('status').innerText = 'Ход соперника...';
+            }
+        }
+
+        function renderBoard() {
+            const cells = document.querySelectorAll('.cell');
+            cells.forEach((cell, i) => {
+                cell.innerText = gameState[i];
+            });
+        }
+
+        function checkWin() {
+            const wins = [
+                [0,1,2], [3,4,5], [6,7,8],
+                [0,3,6], [1,4,7], [2,5,8],
+                [0,4,8], [2,4,6]
+            ];
+            return wins.some(w => gameState[w[0]] && gameState[w[0]] === gameState[w[1]] && gameState[w[0]] === gameState[w[2]]);
+        }
+    </script>
+</body>
+</html>
