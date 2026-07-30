@@ -24,7 +24,7 @@
     <h1>❌⭕ Крестики-Нолики</h1>
 
     <div class="game-card">
-        <div id="status">Загрузка игры...</div>
+        <div id="status">Загрузка сети...</div>
         
         <button id="invite-btn" class="btn-invite hidden" onclick="copyLink()">🔗 Пригласить друга</button>
 
@@ -53,37 +53,32 @@
 
         peer.on('open', (id) => {
             if (targetPeerId) {
-                // Гость зашел по ссылке
+                // Мы — ГОСТЬ
                 mySymbol = 'O';
                 document.getElementById('status').innerText = 'Подключение к хосту...';
                 connectToHost(targetPeerId);
             } else {
-                // Хост открыл чистую страницу
+                // Мы — ХОСТ
                 mySymbol = 'X';
                 document.getElementById('status').innerText = 'Ожидание соперника...';
                 document.getElementById('invite-btn').classList.remove('hidden');
             }
         });
 
-        function connectToHost(hostId) {
-            conn = peer.connect(hostId);
-            setupEvents();
-
-            // Повторная попытка для надежности
-            setTimeout(() => {
-                if (!conn || !conn.open) {
-                    conn = peer.connect(hostId);
-                    setupEvents();
-                }
-            }, 1000);
-        }
-
+        // Слушаем входящие подключения (для ХОСТА)
         peer.on('connection', (c) => {
             conn = c;
-            setupEvents();
+            bindEvents();
         });
 
-        function setupEvents() {
+        // Функция подключения (для ГОСТЯ)
+        function connectToHost(hostId) {
+            conn = peer.connect(hostId, { reliable: true });
+            bindEvents();
+        }
+
+        // Единая подвязка событий для обоих
+        function bindEvents() {
             conn.on('open', () => {
                 document.getElementById('invite-btn').classList.add('hidden');
                 updateStatus();
@@ -98,6 +93,12 @@
                     updateStatus();
                 }
             });
+
+            // Если соединение уже оказалось открытым (быстрая инициализация)
+            if (conn.open) {
+                document.getElementById('invite-btn').classList.add('hidden');
+                updateStatus();
+            }
         }
 
         function copyLink() {
@@ -130,7 +131,7 @@
                 statusEl.innerText = `Ваш ход (${mySymbol})`;
                 statusEl.style.color = '#007bff';
             } else {
-                statusEl.innerText = `Ход соперника (${currentTurn})...`;
+                statusEl.innerText = `Ход соперника (${currentTurn === 'X' ? 'O' : 'X'})...`;
                 statusEl.style.color = '#666';
             }
         }
