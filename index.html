@@ -79,6 +79,47 @@
     padding:26px 24px 30px;
     box-shadow:0 10px 30px rgba(20,24,40,.06);
   }
+  .scoreboard{
+    display:none;
+    align-items:stretch;
+    justify-content:space-between;
+    background:var(--card);
+    border:1px solid var(--cell-border);
+    border-radius:16px;
+    padding:16px 8px;
+    margin:18px 0 0;
+    box-shadow:0 6px 18px rgba(20,24,40,.05);
+  }
+  .scoreboard .item{
+    flex:1;
+    text-align:center;
+    position:relative;
+  }
+  .scoreboard .item + .item::before{
+    content:'';
+    position:absolute;
+    left:0; top:4px; bottom:4px;
+    width:1px;
+    background:var(--cell-border);
+  }
+  .scoreboard .num{
+    display:block;
+    font-size:20px;
+    font-weight:800;
+    color:var(--text);
+  }
+  .scoreboard .item.mine .num{color:var(--blue);}
+  .scoreboard .item.opp .num{color:var(--red);}
+  .scoreboard .label{
+    display:block;
+    font-size:11px;
+    color:var(--muted);
+    font-weight:600;
+    text-transform:uppercase;
+    letter-spacing:.02em;
+    margin-top:2px;
+  }
+
   .status{
     text-align:center;
     font-weight:700;
@@ -220,7 +261,7 @@
   <div class="title-row">
     <div class="icons"><span class="x">✕</span><span class="o">◯</span></div>
     <h1>Крестики-Нолики</h1>
-    <span class="ver">v3.0</span>
+    <span class="ver">v3.1</span>
   </div>
 
   <div class="card">
@@ -228,6 +269,12 @@
     <div id="board" class="board disabled"></div>
     <button id="rematchBtn" class="rematch-btn">🔄 Новая игра</button>
     <div class="info" id="infoLine"></div>
+  </div>
+
+  <div class="scoreboard" id="scoreboard">
+    <div class="item mine"><span class="num" id="scoreMine">0</span><span class="label">Вы</span></div>
+    <div class="item"><span class="num" id="scoreDraws">0</span><span class="label">Ничьи</span></div>
+    <div class="item opp"><span class="num" id="scoreOpp">0</span><span class="label">Соперник</span></div>
   </div>
 </div>
 
@@ -263,6 +310,23 @@
   let myTurn = false;
   let gameOver = false;
   let isHost = false;    // connection role (fixed) — NOT the same as who plays X
+  let score = {mine:0, opp:0, draws:0};
+
+  const scoreboard = document.getElementById('scoreboard');
+  const scoreMineEl = document.getElementById('scoreMine');
+  const scoreOppEl = document.getElementById('scoreOpp');
+  const scoreDrawsEl = document.getElementById('scoreDraws');
+
+  function resetScore(){
+    score = {mine:0, opp:0, draws:0};
+    updateScoreboard();
+  }
+
+  function updateScoreboard(){
+    scoreMineEl.textContent = score.mine;
+    scoreOppEl.textContent = score.opp;
+    scoreDrawsEl.textContent = score.draws;
+  }
 
   // build board cells
   for(let i=0;i<9;i++){
@@ -321,13 +385,18 @@
       board.classList.add('disabled');
       if(result.draw){
         setStatus('Ничья', 'draw');
+        score.draws++;
       } else if(result.symbol === mySymbol){
         setStatus('Вы выиграли! 🎉', 'win');
         result.line.forEach(idx => board.children[idx].classList.add('win'));
+        score.mine++;
       } else {
         setStatus('Соперник выиграл', 'lose');
         result.line.forEach(idx => board.children[idx].classList.add('win'));
+        score.opp++;
       }
+      updateScoreboard();
+      rematchBtn.disabled = false;
     }
   }
 
@@ -350,7 +419,7 @@
     myTurn = (mySymbol === 'X');
     updateTurnStatus();
     infoLine.textContent = 'Вы играете за ' + mySymbol;
-    rematchBtn.disabled = false;
+    rematchBtn.disabled = true;
   }
 
   // Host is authoritative for randomly assigning who plays X each round
@@ -378,6 +447,7 @@
       setStatus('Соперник отключился', 'lose');
       board.classList.add('disabled');
       rematchBtn.style.display = 'none';
+      scoreboard.style.display = 'none';
       inviteBtn.textContent = '🔗 Пригласить друга';
       inviteBtn.classList.remove('connected');
       inviteBtn.disabled = false;
@@ -390,6 +460,8 @@
     inviteBtn.classList.add('connected');
     setStatus('Подключено! Ждём раздачу ролей…', 'waiting');
     rematchBtn.style.display = 'flex';
+    scoreboard.style.display = 'flex';
+    resetScore();
   }
 
   function onHostConnected(){
@@ -397,6 +469,8 @@
     inviteBtn.classList.add('connected');
     modalBackdrop.classList.remove('show');
     rematchBtn.style.display = 'flex';
+    scoreboard.style.display = 'flex';
+    resetScore();
     hostAssignAndStart();
   }
 
