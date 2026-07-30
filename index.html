@@ -3,12 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Крестики-Нолики</title>
-    <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+    <title>Крестики-Нолики v1.1</title>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; font-family: sans-serif; }
         body { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; background: #f0f2f5; padding: 20px; }
-        h1 { margin-bottom: 15px; text-align: center; color: #1a1a1a; }
+        h1 { margin-bottom: 5px; text-align: center; color: #1a1a1a; }
+        .version { font-size: 13px; color: #888; margin-bottom: 15px; font-weight: normal; }
         .game-card { background: white; padding: 25px; border-radius: 16px; box-shadow: 0 4px 20px rgba(0,0,0,0.08); width: 100%; max-width: 360px; text-align: center; }
         #status { font-size: 16px; font-weight: bold; margin-bottom: 15px; color: #555; }
         .btn-invite { background: #007bff; color: white; border: none; padding: 12px 20px; font-size: 15px; border-radius: 10px; cursor: pointer; width: 100%; margin-bottom: 15px; font-weight: bold; }
@@ -21,10 +21,10 @@
 </head>
 <body>
 
-    <h1>❌⭕ Крестики-Нолики</h1>
+    <h1>❌⭕ Крестики-Нолики <span class="version">v1.1</span></h1>
 
     <div class="game-card">
-        <div id="status">Подключение к серверу...</div>
+        <div id="status">Подключение...</div>
         
         <button id="invite-btn" class="btn-invite hidden" onclick="copyLink()">🔗 Пригласить друга</button>
 
@@ -47,7 +47,7 @@
         const isHost = !roomId;
 
         if (isHost) {
-            roomId = 'room_' + Math.random().toString(36).substring(2, 9);
+            roomId = Math.random().toString(36).substring(2, 9);
         }
 
         const mySymbol = isHost ? 'X' : 'O';
@@ -55,33 +55,31 @@
         let boardState = Array(9).fill(null);
         let gameReady = false;
 
-        // Подключаемся к общественному брокеру через WebSocket
-        const client = mqtt.connect('wss://broker.hivemq.com:8884/mqtt');
+        // Общественный быстрый WebSocket от PieSocket
+        const apiKey = 'demo';
+        const socket = new WebSocket(`wss://demo.piesocket.com/v3/${roomId}?api_key=${apiKey}&notify_self=0`);
 
-        client.on('connect', () => {
-            client.subscribe(`tictactoe/${roomId}`);
-
+        socket.onopen = () => {
             if (isHost) {
                 document.getElementById('status').innerText = 'Ожидание соперника...';
                 document.getElementById('invite-btn').classList.remove('hidden');
             } else {
-                // Гость зашел — отправляем сигнал хосту
-                client.publish(`tictactoe/${roomId}`, JSON.stringify({ type: 'join' }));
+                // Гость вошел и кричит хосту: "Я тут!"
+                sendSignal({ type: 'join' });
             }
-        });
+        };
 
-        client.on('message', (topic, message) => {
-            const data = JSON.parse(message.toString());
+        socket.onmessage = (event) => {
+            const data = JSON.parse(event.data);
 
             if (data.type === 'join' && isHost) {
                 gameReady = true;
                 document.getElementById('invite-btn').classList.add('hidden');
-                // Хост отвечает гостю, что игра началась
-                client.publish(`tictactoe/${roomId}`, JSON.stringify({ type: 'start' }));
+                sendSignal({ type: 'start' });
                 updateStatus();
             }
 
-            if (data.type === 'start') {
+            if (data.type === 'start' && !isHost) {
                 gameReady = true;
                 document.getElementById('invite-btn').classList.add('hidden');
                 updateStatus();
@@ -94,22 +92,34 @@
                 checkWinner();
                 updateStatus();
             }
-        });
+        };
+
+        function sendSignal(msg) {
+            if (socket.readyState === WebSocket.OPEN) {
+                socket.send(JSON.stringify(msg));
+            }
+        }
 
         function copyLink() {
             const link = `${window.location.origin}${window.location.pathname}?room=${roomId}`;
             navigator.clipboard.writeText(link);
-            alert('Ссылка скопирована!');
+            alert('Ссылка v1.1 скопирована!');
         }
 
         function makeMove(index) {
             if (!gameReady || boardState[index] || currentTurn !== mySymbol) return;
 
-            client.publish(`tictactoe/${roomId}`, JSON.stringify({
+            boardState[index] = mySymbol;
+            currentTurn = mySymbol === 'X' ? 'O' : 'X';
+            renderBoard();
+            checkWinner();
+            updateStatus();
+
+            sendSignal({
                 type: 'move',
                 index: index,
                 symbol: mySymbol
-            }));
+            });
         }
 
         function renderBoard() {
