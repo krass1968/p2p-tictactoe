@@ -8,15 +8,14 @@
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; font-family: sans-serif; }
         body { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; background: #f0f2f5; padding: 20px; }
-        h1 { margin-bottom: 20px; text-align: center; }
-        .card { background: white; padding: 25px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); width: 100%; max-width: 400px; text-align: center; }
-        .btn { background: #007bff; color: white; border: none; padding: 12px 20px; font-size: 16px; border-radius: 8px; cursor: pointer; width: 100%; margin-top: 10px; font-weight: bold; }
-        .btn:hover { background: #0056b3; }
-        input { width: 100%; padding: 12px; margin-top: 10px; border: 1px solid #ccc; border-radius: 8px; font-size: 16px; text-align: center; }
-        #status { font-size: 18px; font-weight: bold; margin-bottom: 15px; color: #333; }
-        #board { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 20px; width: 300px; height: 300px; }
-        .cell { background: #fff; border: 2px solid #ddd; border-radius: 12px; font-size: 48px; font-weight: bold; display: flex; align-items: center; justify-content: center; cursor: pointer; user-select: none; }
-        .cell:hover { background: #f8f9fa; }
+        h1 { margin-bottom: 15px; text-align: center; color: #1a1a1a; }
+        .game-card { background: white; padding: 25px; border-radius: 16px; box-shadow: 0 4px 20px rgba(0,0,0,0.08); width: 100%; max-width: 360px; text-align: center; }
+        #status { font-size: 18px; font-weight: bold; margin-bottom: 15px; color: #555; }
+        .btn-invite { background: #007bff; color: white; border: none; padding: 12px 20px; font-size: 15px; border-radius: 10px; cursor: pointer; width: 100%; margin-bottom: 15px; font-weight: bold; transition: background 0.2s; }
+        .btn-invite:hover { background: #0056b3; }
+        #board { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; width: 300px; height: 300px; margin: 0 auto; }
+        .cell { background: #f8f9fa; border: 2px solid #e9ecef; border-radius: 12px; font-size: 48px; font-weight: bold; display: flex; align-items: center; justify-content: center; cursor: pointer; user-select: none; color: #333; }
+        .cell:hover { background: #e9ecef; }
         .hidden { display: none !important; }
     </style>
 </head>
@@ -24,24 +23,11 @@
 
     <h1>❌⭕ Крестики-Нолики</h1>
 
-    <!-- Экран подключения -->
-    <div id="setup-card" class="card">
-        <div id="loading">Загрузка сети...</div>
+    <div class="game-card">
+        <div id="status">Загрузка игры...</div>
         
-        <div id="host-controls" class="hidden">
-            <p style="margin-bottom: 10px;">Вы создатель комнаты!</p>
-            <button class="btn" onclick="copyLink()">📋 Скопировать ссылку для друга</button>
-            <p style="font-size: 12px; color: #666; margin-top: 10px;">Отправь ссылку сопернику и жди его подключения.</p>
-        </div>
+        <button id="invite-btn" class="btn-invite hidden" onclick="copyLink()">🔗 Пригласить друга</button>
 
-        <div id="guest-controls" class="hidden">
-            <p>Подключение по приглашению...</p>
-        </div>
-    </div>
-
-    <!-- Экран игры -->
-    <div id="game-card" class="card hidden">
-        <div id="status">Ожидание хода...</div>
         <div id="board">
             <div class="cell" onclick="makeMove(0)"></div>
             <div class="cell" onclick="makeMove(1)"></div>
@@ -66,32 +52,40 @@
         const targetPeerId = urlParams.get('room');
 
         peer.on('open', (id) => {
-            document.getElementById('loading').classList.add('hidden');
-            
             if (targetPeerId) {
-                // Мы ГОСТЬ (перешли по ссылке с ?room=...)
-                document.getElementById('guest-controls').classList.remove('hidden');
-                document.getElementById('status').innerText = 'Подключение к игре...';
-                conn = peer.connect(targetPeerId);
-                setupConnection();
+                // Гость зашел по ссылке
                 mySymbol = 'O';
+                document.getElementById('status').innerText = 'Подключение к хосту...';
+                connectToHost(targetPeerId);
             } else {
-                // Мы ХОСТ (просто открыли чистый сайт)
-                document.getElementById('host-controls').classList.remove('hidden');
+                // Хост открыл чистую страницу
                 mySymbol = 'X';
+                document.getElementById('status').innerText = 'Ожидание соперника...';
+                document.getElementById('invite-btn').classList.remove('hidden');
             }
         });
 
+        function connectToHost(hostId) {
+            conn = peer.connect(hostId);
+            setupEvents();
+
+            // Повторная попытка для надежности
+            setTimeout(() => {
+                if (!conn || !conn.open) {
+                    conn = peer.connect(hostId);
+                    setupEvents();
+                }
+            }, 1000);
+        }
+
         peer.on('connection', (c) => {
             conn = c;
-            setupConnection();
+            setupEvents();
         });
 
-        function setupConnection() {
+        function setupEvents() {
             conn.on('open', () => {
-                // Полностью скрываем карточку подключения и показываем чистую игру!
-                document.getElementById('setup-card').classList.add('hidden');
-                document.getElementById('game-card').classList.remove('hidden');
+                document.getElementById('invite-btn').classList.add('hidden');
                 updateStatus();
             });
 
@@ -113,7 +107,7 @@
         }
 
         function makeMove(index) {
-            if (boardState[index] || currentTurn !== mySymbol || !conn) return;
+            if (boardState[index] || currentTurn !== mySymbol || !conn || !conn.open) return;
 
             boardState[index] = mySymbol;
             conn.send({ type: 'move', index: index, symbol: mySymbol });
