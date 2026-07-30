@@ -10,7 +10,7 @@
         body { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; background: #f0f2f5; padding: 20px; }
         h1 { margin-bottom: 15px; text-align: center; color: #1a1a1a; }
         .game-card { background: white; padding: 25px; border-radius: 16px; box-shadow: 0 4px 20px rgba(0,0,0,0.08); width: 100%; max-width: 360px; text-align: center; }
-        #status { font-size: 18px; font-weight: bold; margin-bottom: 15px; color: #555; }
+        #status { font-size: 16px; font-weight: bold; margin-bottom: 15px; color: #555; min-height: 24px; }
         .btn-invite { background: #007bff; color: white; border: none; padding: 12px 20px; font-size: 15px; border-radius: 10px; cursor: pointer; width: 100%; margin-bottom: 15px; font-weight: bold; transition: background 0.2s; }
         .btn-invite:hover { background: #0056b3; }
         #board { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; width: 300px; height: 300px; margin: 0 auto; }
@@ -24,7 +24,7 @@
     <h1>❌⭕ Крестики-Нолики</h1>
 
     <div class="game-card">
-        <div id="status">Загрузка сети...</div>
+        <div id="status">Инициализация сети...</div>
         
         <button id="invite-btn" class="btn-invite hidden" onclick="copyLink()">🔗 Пригласить друга</button>
 
@@ -42,44 +42,64 @@
     </div>
 
     <script>
-        const peer = new Peer();
+        // Подключаем Google STUN серверы для стабильного P2P
+        const peer = new Peer({
+            config: {
+                iceServers: [
+                    { urls: 'stun:stun.l.google.com:19302' },
+                    { urls: 'stun:stun1.l.google.com:19302' }
+                ]
+            }
+        });
+
         let conn = null;
         let mySymbol = '';
         let currentTurn = 'X';
         let boardState = Array(9).fill(null);
+        let retryInterval = null;
 
         const urlParams = new URLSearchParams(window.location.search);
         const targetPeerId = urlParams.get('room');
 
         peer.on('open', (id) => {
             if (targetPeerId) {
-                // Мы — ГОСТЬ
+                // ГОСТЬ
                 mySymbol = 'O';
-                document.getElementById('status').innerText = 'Подключение к хосту...';
-                connectToHost(targetPeerId);
+                document.getElementById('status').innerText = 'Соединение с хостом...';
+                startConnecting(targetPeerId);
             } else {
-                // Мы — ХОСТ
+                // ХОСТ
                 mySymbol = 'X';
                 document.getElementById('status').innerText = 'Ожидание соперника...';
                 document.getElementById('invite-btn').classList.remove('hidden');
             }
         });
 
-        // Слушаем входящие подключения (для ХОСТА)
+        // ХОСТ ловит подключение
         peer.on('connection', (c) => {
             conn = c;
-            bindEvents();
+            setupConnection();
         });
 
-        // Функция подключения (для ГОСТЯ)
-        function connectToHost(hostId) {
+        // ГОСТЬ стучится к хосту
+        function startConnecting(hostId) {
             conn = peer.connect(hostId, { reliable: true });
-            bindEvents();
+            setupConnection();
+
+            // Если за 2 секунды не связались — стучимся повторно
+            retryInterval = setInterval(() => {
+                if (!conn || !conn.open) {
+                    conn = peer.connect(hostId, { reliable: true });
+                    setupConnection();
+                } else {
+                    clearInterval(retryInterval);
+                }
+            }, 2000);
         }
 
-        // Единая подвязка событий для обоих
-        function bindEvents() {
+        function setupConnection() {
             conn.on('open', () => {
+                if (retryInterval) clearInterval(retryInterval);
                 document.getElementById('invite-btn').classList.add('hidden');
                 updateStatus();
             });
@@ -94,11 +114,9 @@
                 }
             });
 
-            // Если соединение уже оказалось открытым (быстрая инициализация)
-            if (conn.open) {
-                document.getElementById('invite-btn').classList.add('hidden');
-                updateStatus();
-            }
+            conn.on('error', (err) => {
+                document.getElementById('status').innerText = 'Ошибка связи. Обновите страницу.';
+            });
         }
 
         function copyLink() {
