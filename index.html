@@ -1,296 +1,434 @@
 <!DOCTYPE html>
 <html lang="ru">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    
-    <!-- Запрет кэширования: браузер больше не будет просить Ctrl+F5 -->
-    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
-    <meta http-equiv="Pragma" content="no-cache">
-    <meta http-equiv="Expires" content="0">
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Крестики-Нолики</title>
+<script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+<style>
+  :root{
+    --blue:#0b6bf2;
+    --green:#1fb15a;
+    --red:#e8422a;
+    --bg:#eef0f4;
+    --card:#ffffff;
+    --cell:#f4f5f7;
+    --cell-border:#e3e5ea;
+    --text:#1b1d22;
+    --muted:#9aa0ab;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    min-height:100vh;
+    background:var(--bg);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    display:flex;
+    justify-content:center;
+    padding:32px 16px 60px;
+  }
+  .wrap{
+    width:100%;
+    max-width:460px;
+  }
+  .invite-btn{
+    width:100%;
+    border:none;
+    border-radius:16px;
+    padding:18px 20px;
+    font-size:17px;
+    font-weight:700;
+    color:#fff;
+    background:var(--blue);
+    cursor:pointer;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    gap:10px;
+    box-shadow:0 6px 16px rgba(11,107,242,.25);
+    transition:background .15s ease;
+  }
+  .invite-btn.connected{
+    background:var(--green);
+    box-shadow:0 6px 16px rgba(31,177,90,.25);
+    cursor:default;
+  }
+  .invite-btn:disabled{cursor:default;}
 
-    <title>Крестики-Нолики v2.4</title>
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <style>
-        * { 
-            box-sizing: border-box; 
-            margin: 0; 
-            padding: 0; 
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; 
-        }
+  .title-row{
+    display:flex;
+    align-items:baseline;
+    gap:10px;
+    margin:26px 4px 18px;
+  }
+  .title-row .icons{display:flex; gap:4px; font-size:30px; line-height:1;}
+  .title-row .x{color:var(--red); font-weight:900;}
+  .title-row .o{color:var(--red); font-weight:900;}
+  .title-row h1{
+    font-size:28px;
+    margin:0;
+    font-weight:800;
+    color:var(--text);
+    flex:1;
+  }
+  .title-row .ver{font-size:13px; color:var(--muted); font-weight:600;}
 
-        body { 
-            display: flex; 
-            flex-direction: column; 
-            align-items: center; 
-            justify-content: center; 
-            min-height: 100vh; 
-            background: #f0f2f5; 
-            padding: 20px; 
-        }
-        
-        /* Кнопка приглашения НАД игрой */
-        .btn-invite { 
-            background: #007bff; 
-            color: white; 
-            border: none; 
-            padding: 14px 20px; 
-            font-size: 16px; 
-            border-radius: 12px; 
-            cursor: pointer; 
-            width: 100%; 
-            max-width: 360px; 
-            margin-bottom: 20px; 
-            font-weight: bold; 
-            box-shadow: 0 4px 12px rgba(0, 123, 255, 0.25); 
-            transition: all 0.2s ease; 
-        }
-        
-        .btn-invite:hover { 
-            background: #0056b3; 
-            transform: translateY(-1px);
-        }
+  .card{
+    background:var(--card);
+    border-radius:22px;
+    padding:26px 24px 30px;
+    box-shadow:0 10px 30px rgba(20,24,40,.06);
+  }
+  .status{
+    text-align:center;
+    font-weight:700;
+    font-size:17px;
+    color:var(--blue);
+    margin:0 0 20px;
+    min-height:24px;
+  }
+  .status.waiting{color:var(--muted); font-weight:600;}
+  .status.mine{color:var(--blue);}
+  .status.theirs{color:var(--muted);}
+  .status.win{color:var(--green);}
+  .status.lose{color:var(--red);}
+  .status.draw{color:var(--muted);}
 
-        /* Зеленый статус подключения соперника */
-        .btn-connected { 
-            background: #28a745 !important; 
-            cursor: default; 
-            box-shadow: 0 4px 12px rgba(40, 167, 69, 0.25);
-            transform: none !important;
-        }
+  .board{
+    display:grid;
+    grid-template-columns:repeat(3,1fr);
+    gap:14px;
+  }
+  .cell{
+    aspect-ratio:1/1;
+    background:var(--cell);
+    border:1px solid var(--cell-border);
+    border-radius:16px;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    font-size:44px;
+    font-weight:800;
+    cursor:pointer;
+    user-select:none;
+    transition:background .1s ease;
+  }
+  .cell:hover:not(.filled){background:#ececf1;}
+  .cell.filled{cursor:default;}
+  .cell.x{color:var(--red);}
+  .cell.o{color:var(--red);}
+  .cell.win{background:#e4f7ea;}
+  .board.disabled .cell:hover{background:var(--cell);}
 
-        h1 { 
-            margin-bottom: 5px; 
-            text-align: center; 
-            color: #1a1a1a; 
-        }
+  .info{
+    margin-top:20px;
+    text-align:center;
+    font-size:13px;
+    color:var(--muted);
+    line-height:1.5;
+  }
+  .info code{
+    background:#f2f3f6;
+    padding:2px 6px;
+    border-radius:6px;
+    font-size:12px;
+    word-break:break-all;
+  }
 
-        .version { 
-            font-size: 13px; 
-            color: #888; 
-            margin-bottom: 15px; 
-            font-weight: normal; 
-        }
-        
-        .game-card { 
-            background: white; 
-            padding: 25px; 
-            border-radius: 16px; 
-            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08); 
-            width: 100%; 
-            max-width: 360px; 
-            text-align: center; 
-        }
-
-        #status { 
-            font-size: 16px; 
-            font-weight: bold; 
-            margin-bottom: 15px; 
-            color: #555; 
-        }
-        
-        #board { 
-            display: grid; 
-            grid-template-columns: repeat(3, 1fr); 
-            gap: 10px; 
-            width: 100%; 
-            margin: 0 auto; 
-        }
-
-        .cell { 
-            background: #f8f9fa; 
-            border: 2px solid #e9ecef; 
-            border-radius: 12px; 
-            font-size: 44px; 
-            font-weight: bold; 
-            display: flex; 
-            align-items: center; 
-            justify-content: center; 
-            cursor: pointer; 
-            user-select: none; 
-            color: #333; 
-            aspect-ratio: 1; 
-            transition: background 0.12s, border-color 0.12s; 
-        }
-
-        .cell:hover { 
-            background: #e9ecef; 
-        }
-
-        .hidden { 
-            display: none !important; 
-        }
-    </style>
+  .modal-backdrop{
+    position:fixed; inset:0;
+    background:rgba(20,24,40,.45);
+    display:none;
+    align-items:center;
+    justify-content:center;
+    padding:20px;
+    z-index:10;
+  }
+  .modal-backdrop.show{display:flex;}
+  .modal{
+    background:#fff;
+    border-radius:20px;
+    padding:24px;
+    width:100%;
+    max-width:380px;
+    box-shadow:0 20px 50px rgba(0,0,0,.2);
+  }
+  .modal h2{margin:0 0 6px; font-size:19px;}
+  .modal p{margin:0 0 16px; font-size:14px; color:var(--muted); line-height:1.5;}
+  .link-row{
+    display:flex; gap:8px; margin-bottom:14px;
+  }
+  .link-row input{
+    flex:1;
+    border:1px solid var(--cell-border);
+    border-radius:10px;
+    padding:10px 12px;
+    font-size:13px;
+    color:var(--text);
+    background:var(--cell);
+  }
+  .link-row button{
+    border:none;
+    border-radius:10px;
+    background:var(--blue);
+    color:#fff;
+    font-weight:700;
+    font-size:13px;
+    padding:0 16px;
+    cursor:pointer;
+  }
+  .waiting-spinner{
+    display:flex; align-items:center; gap:10px;
+    font-size:13px; color:var(--muted); margin-bottom:14px;
+  }
+  .dot{
+    width:8px; height:8px; border-radius:50%;
+    background:var(--blue);
+    animation:pulse 1s infinite ease-in-out;
+  }
+  @keyframes pulse{0%,100%{opacity:.3;}50%{opacity:1;}}
+  .modal .close{
+    width:100%;
+    border:none;
+    background:var(--cell);
+    color:var(--text);
+    font-weight:700;
+    border-radius:10px;
+    padding:12px;
+    cursor:pointer;
+    font-size:14px;
+  }
+</style>
 </head>
 <body>
+<div class="wrap">
+  <button id="inviteBtn" class="invite-btn">🔗 Пригласить друга</button>
 
-    <!-- Кнопка сверху над игрой -->
-    <button id="invite-btn" class="btn-invite hidden" onclick="copyLink()">🔗 Пригласить друга</button>
+  <div class="title-row">
+    <div class="icons"><span class="x">✕</span><span class="o">◯</span></div>
+    <h1>Крестики-Нолики</h1>
+    <span class="ver">v2.4</span>
+  </div>
 
-    <h1>❌⭕ Крестики-Нолики <span class="version">v2.4</span></h1>
+  <div class="card">
+    <p id="status" class="status waiting">Пригласите друга, чтобы начать</p>
+    <div id="board" class="board disabled"></div>
+    <div class="info" id="infoLine"></div>
+  </div>
+</div>
 
-    <div class="game-card">
-        <div id="status">Загрузка...</div>
-
-        <div id="board">
-            <div class="cell" onclick="makeMove(0)"></div>
-            <div class="cell" onclick="makeMove(1)"></div>
-            <div class="cell" onclick="makeMove(2)"></div>
-            <div class="cell" onclick="makeMove(3)"></div>
-            <div class="cell" onclick="makeMove(4)"></div>
-            <div class="cell" onclick="makeMove(5)"></div>
-            <div class="cell" onclick="makeMove(6)"></div>
-            <div class="cell" onclick="makeMove(7)"></div>
-            <div class="cell" onclick="makeMove(8)"></div>
-        </div>
+<div class="modal-backdrop" id="modalBackdrop">
+  <div class="modal">
+    <h2>Пригласить друга</h2>
+    <p>Отправьте эту ссылку сопернику — как только он откроет её, игра начнётся.</p>
+    <div class="link-row">
+      <input id="inviteLink" type="text" readonly>
+      <button id="copyBtn">Копировать</button>
     </div>
+    <div class="waiting-spinner"><span class="dot"></span> Ожидание соперника…</div>
+    <button class="close" id="closeModal">Закрыть</button>
+  </div>
+</div>
 
-    <script>
-        const urlParams = new URLSearchParams(window.location.search);
-        let roomId = urlParams.get('room');
-        const isHost = !roomId;
+<script>
+(function(){
+  const board = document.getElementById('board');
+  const statusEl = document.getElementById('status');
+  const inviteBtn = document.getElementById('inviteBtn');
+  const modalBackdrop = document.getElementById('modalBackdrop');
+  const inviteLinkInput = document.getElementById('inviteLink');
+  const copyBtn = document.getElementById('copyBtn');
+  const closeModal = document.getElementById('closeModal');
+  const infoLine = document.getElementById('infoLine');
 
-        if (isHost) {
-            roomId = Math.random().toString(36).substring(2, 9);
-        }
+  let cells = Array(9).fill(null);
+  let peer = null;
+  let conn = null;
+  let mySymbol = null;   // 'X' or 'O'
+  let myTurn = false;
+  let gameOver = false;
+  let isHost = false;
 
-        const mySymbol = isHost ? 'X' : 'O';
-        let currentTurn = 'X';
-        let boardState = Array(9).fill(null);
+  // build board cells
+  for(let i=0;i<9;i++){
+    const c = document.createElement('div');
+    c.className = 'cell';
+    c.dataset.i = i;
+    c.addEventListener('click', () => onCellClick(i));
+    board.appendChild(c);
+  }
 
-        const statusEl = document.getElementById('status');
-        const inviteBtn = document.getElementById('invite-btn');
+  function renderCell(i){
+    const el = board.children[i];
+    const v = cells[i];
+    el.textContent = v === 'X' ? '✕' : v === 'O' ? '◯' : '';
+    el.className = 'cell' + (v ? ' filled ' + v.toLowerCase() : '');
+  }
 
-        if (isHost) {
-            inviteBtn.classList.remove('hidden');
-        }
-        updateStatus();
+  function renderBoard(){
+    for(let i=0;i<9;i++) renderCell(i);
+  }
 
-        const client = window.supabase.createClient(
-            'https://dmyudoxgljhfgasvvuvd.supabase.co', 
-            'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRteXVkb3hnbGpoZmdhc3Z2dXZkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzgxOTgwMTUsImV4cCI6MjA1Mzc3NDAxNX0.zV_7-B9J1pB3Z-aE5X9eO1d4lM8C6F2G1H0I3J4K5L6'
-        );
-        
-        const channel = client.channel(`room_${roomId}`, {
-            config: { broadcast: { self: false } }
-        });
+  function setStatus(text, cls){
+    statusEl.textContent = text;
+    statusEl.className = 'status ' + cls;
+  }
 
-        channel
-            .on('broadcast', { event: 'game' }, (payload) => {
-                const data = payload?.payload ?? payload;
+  const WIN_LINES = [
+    [0,1,2],[3,4,5],[6,7,8],
+    [0,3,6],[1,4,7],[2,5,8],
+    [0,4,8],[2,4,6]
+  ];
 
-                // 1. Соперник зашел: Хост меняет кнопку на ЗЕЛЕНУЮ "🟢 Соперник в игре"
-                if (data.type === 'ping' && isHost) {
-                    setOpponentConnected();
-                    // Синхронизируем состояние доски для вошедшего соперника
-                    channel.send({
-                        type: 'broadcast',
-                        event: 'game',
-                        payload: { type: 'sync', boardState: boardState, currentTurn: currentTurn }
-                    });
-                }
+  function checkWinner(bd){
+    for(const line of WIN_LINES){
+      const [a,b,c] = line;
+      if(bd[a] && bd[a]===bd[b] && bd[a]===bd[c]) return {symbol:bd[a], line};
+    }
+    if(bd.every(v=>v)) return {draw:true};
+    return null;
+  }
 
-                // 2. Прием синхронизации гостем
-                if (data.type === 'sync' && !isHost) {
-                    boardState = data.boardState;
-                    currentTurn = data.currentTurn;
-                    renderBoard();
-                    updateStatus();
-                }
+  function onCellClick(i){
+    if(gameOver || !myTurn || cells[i] || !conn) return;
+    applyMove(i, mySymbol);
+    conn.send({type:'move', index:i, symbol:mySymbol});
+    myTurn = false;
+    updateTurnStatus();
+  }
 
-                // 3. Прием хода
-                if (data.type === 'move') {
-                    if (isHost) setOpponentConnected();
-                    boardState[data.index] = data.symbol;
-                    currentTurn = data.symbol === 'X' ? 'O' : 'X';
-                    renderBoard();
-                    checkWinner();
-                    updateStatus();
-                }
-            })
-            .subscribe((status) => {
-                if (status === 'SUBSCRIBED' && !isHost) {
-                    // Гость сообщает хосту, что он зашел
-                    channel.send({ type: 'broadcast', event: 'game', payload: { type: 'ping' } });
-                }
-            });
+  function applyMove(i, symbol){
+    cells[i] = symbol;
+    renderCell(i);
+    const result = checkWinner(cells);
+    if(result){
+      gameOver = true;
+      board.classList.add('disabled');
+      if(result.draw){
+        setStatus('Ничья', 'draw');
+      } else if(result.symbol === mySymbol){
+        setStatus('Вы выиграли! 🎉', 'win');
+        result.line.forEach(idx => board.children[idx].classList.add('win'));
+      } else {
+        setStatus('Соперник выиграл', 'lose');
+        result.line.forEach(idx => board.children[idx].classList.add('win'));
+      }
+    }
+  }
 
-        function setOpponentConnected() {
-            inviteBtn.innerText = '🟢 Соперник в игре';
-            inviteBtn.classList.add('btn-connected');
-            inviteBtn.onclick = null;
-        }
+  function updateTurnStatus(){
+    if(gameOver) return;
+    if(myTurn){
+      setStatus('Ваш ход (' + mySymbol + ')', 'mine');
+      board.classList.remove('disabled');
+    } else {
+      setStatus('Соперник ходит', 'theirs');
+      board.classList.add('disabled');
+    }
+  }
 
-        function copyLink() {
-            const link = `${window.location.origin}${window.location.pathname}?room=${roomId}`;
-            navigator.clipboard.writeText(link);
-            alert('Ссылка скопирована!');
-        }
+  function resetGame(startingTurn){
+    cells = Array(9).fill(null);
+    gameOver = false;
+    renderBoard();
+    board.querySelectorAll('.cell').forEach(c=>c.classList.remove('win'));
+    myTurn = startingTurn;
+    updateTurnStatus();
+  }
 
-        function makeMove(index) {
-            if (boardState[index] || currentTurn !== mySymbol) return;
+  function setupConnectionHandlers(){
+    conn.on('data', data => {
+      if(data.type === 'move'){
+        applyMove(data.index, data.symbol);
+        myTurn = true;
+        updateTurnStatus();
+      } else if(data.type === 'rematch'){
+        resetGame(!isHost); // alternate who starts, guest starts this time logic simplified below
+      }
+    });
+    conn.on('close', () => {
+      setStatus('Соперник отключился', 'lose');
+      board.classList.add('disabled');
+      inviteBtn.textContent = '🔗 Пригласить друга';
+      inviteBtn.classList.remove('connected');
+      inviteBtn.disabled = false;
+    });
+  }
 
-            boardState[index] = mySymbol;
-            currentTurn = mySymbol === 'X' ? 'O' : 'X';
-            renderBoard();
-            checkWinner();
-            updateStatus();
+  function onConnected(){
+    inviteBtn.textContent = '✓ Соперник в игре';
+    inviteBtn.classList.add('connected');
+    modalBackdrop.classList.remove('show');
+    infoLine.textContent = 'Вы играете за ' + mySymbol;
+    resetGame(mySymbol === 'X');
+  }
 
-            channel.send({
-                type: 'broadcast',
-                event: 'game',
-                payload: { type: 'move', index: index, symbol: mySymbol }
-            });
-        }
+  // ---- Host flow ----
+  function startHost(){
+    inviteBtn.disabled = true;
+    peer = new Peer();
+    peer.on('open', id => {
+      const url = location.origin + location.pathname + '?join=' + id;
+      inviteLinkInput.value = url;
+      modalBackdrop.classList.add('show');
+    });
+    peer.on('connection', c => {
+      conn = c;
+      isHost = true;
+      mySymbol = 'X';
+      setupConnectionHandlers();
+      conn.on('open', onConnected);
+    });
+    peer.on('error', err => {
+      setStatus('Ошибка соединения: ' + err.type, 'lose');
+      inviteBtn.disabled = false;
+    });
+  }
 
-        function renderBoard() {
-            const cells = document.querySelectorAll('.cell');
-            cells.forEach((cell, i) => {
-                cell.innerText = boardState[i] || '';
-            });
-        }
+  // ---- Guest flow ----
+  function startGuest(hostId){
+    inviteBtn.style.display = 'none';
+    setStatus('Подключение к сопернику…', 'waiting');
+    peer = new Peer();
+    peer.on('open', () => {
+      conn = peer.connect(hostId, {reliable:true});
+      isHost = false;
+      mySymbol = 'O';
+      setupConnectionHandlers();
+      conn.on('open', onConnected);
+      conn.on('error', () => setStatus('Не удалось подключиться', 'lose'));
+    });
+    peer.on('error', err => {
+      setStatus('Ошибка соединения: ' + err.type, 'lose');
+    });
+  }
 
-        function updateStatus() {
-            if (currentTurn === mySymbol) {
-                statusEl.innerText = `Ваш ход (${mySymbol})`;
-                statusEl.style.color = '#007bff';
-            } else {
-                statusEl.innerText = `Ход соперника (${currentTurn})...`;
-                statusEl.style.color = '#666';
-            }
-        }
+  inviteBtn.addEventListener('click', () => {
+    if(inviteBtn.classList.contains('connected')) return;
+    startHost();
+  });
 
-        function checkWinner() {
-            const wins = [
-                [0,1,2], [3,4,5], [6,7,8],
-                [0,3,6], [1,4,7], [2,5,8],
-                [0,4,8], [2,4,6]
-            ];
-            for (let w of wins) {
-                if (boardState[w[0]] && boardState[w[0]] === boardState[w[1]] && boardState[w[0]] === boardState[w[2]]) {
-                    const winner = boardState[w[0]];
-                    setTimeout(() => {
-                        alert(winner === mySymbol ? 'Победа! 🎉' : 'Поражение! 😞');
-                        resetGame();
-                    }, 100);
-                    return;
-                }
-            }
-            if (!boardState.includes(null)) {
-                setTimeout(() => {
-                    alert('Ничья! 🤝');
-                    resetGame();
-                }, 100);
-            }
-        }
+  copyBtn.addEventListener('click', () => {
+    inviteLinkInput.select();
+    navigator.clipboard.writeText(inviteLinkInput.value).then(()=>{
+      copyBtn.textContent = 'Скопировано';
+      setTimeout(()=>copyBtn.textContent='Копировать', 1500);
+    });
+  });
 
-        function resetGame() {
-            if (isHost) {
-                location.href = window.location.pathname;
-            } else {
-                location.href = `${window.location.pathname}?room=${roomId}`;
-            }
-        }
-    </script>
+  closeModal.addEventListener('click', () => {
+    modalBackdrop.classList.remove('show');
+  });
+
+  // check URL for join code
+  const params = new URLSearchParams(location.search);
+  const joinId = params.get('join');
+  if(joinId){
+    startGuest(joinId);
+  }
+
+  renderBoard();
+})();
+</script>
 </body>
 </html>
