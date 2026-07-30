@@ -3,131 +3,162 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>P2P Tic-Tac-Toe</title>
+    <title>P2P Крестики-Нолики</title>
     <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
     <style>
-        body { font-family: sans-serif; text-align: center; background: #f0f2f5; margin: 0; padding: 20px; }
-        .card { background: white; padding: 20px; border-radius: 12px; max-width: 400px; margin: 0 auto 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
-        .board { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; max-width: 300px; margin: 20px auto; }
-        .cell { width: 90px; height: 90px; font-size: 36px; font-weight: bold; display: flex; align-items: center; justify-content: center; background: #e9ecef; border-radius: 8px; cursor: pointer; user-select: none; }
-        .cell:hover { background: #dee2e6; }
-        input, button { padding: 10px; margin: 5px; font-size: 16px; border-radius: 6px; border: 1px solid #ccc; }
-        button { background: #007bff; color: white; border: none; cursor: pointer; }
-        button:hover { background: #0056b3; }
-        #status { font-weight: bold; margin: 15px 0; color: #333; }
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: sans-serif; }
+        body { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; background: #f0f2f5; padding: 20px; }
+        h1 { margin-bottom: 20px; text-align: center; }
+        .card { background: white; padding: 25px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); width: 100%; max-width: 400px; text-align: center; }
+        .btn { background: #007bff; color: white; border: none; padding: 12px 20px; font-size: 16px; border-radius: 8px; cursor: pointer; width: 100%; margin-top: 10px; font-weight: bold; }
+        .btn:hover { background: #0056b3; }
+        input { width: 100%; padding: 12px; margin-top: 10px; border: 1px solid #ccc; border-radius: 8px; font-size: 16px; text-align: center; }
+        #status { font-size: 18px; font-weight: bold; margin-bottom: 15px; color: #333; }
+        #board { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 20px; width: 300px; height: 300px; }
+        .cell { background: #fff; border: 2px solid #ddd; border-radius: 12px; font-size: 48px; font-weight: bold; display: flex; align-items: center; justify-content: center; cursor: pointer; user-select: none; }
+        .cell:hover { background: #f8f9fa; }
+        .hidden { display: none !important; }
     </style>
 </head>
 <body>
 
-    <h1>❌⭕ P2P Крестики-Нолики</h1>
+    <h1>❌⭕ Крестики-Нолики</h1>
 
-    <div class="card">
-        <div id="status">Подключение к сети...</div>
-        <div>
-            <p>Ваш ID: <b id="my-id">...</b></p>
-            <input type="text" id="peer-id-input" placeholder="Введите ID соперника">
-            <button onclick="connectToPeer()">Подключиться</button>
+    <!-- Экран подключения -->
+    <div id="setup-card" class="card">
+        <div id="loading">Загрузка сети...</div>
+        
+        <div id="host-controls" class="hidden">
+            <p style="margin-bottom: 10px;">Вы создатель комнаты!</p>
+            <button class="btn" onclick="copyLink()">📋 Скопировать ссылку для друга</button>
+            <p style="font-size: 12px; color: #666; margin-top: 10px;">Отправь ссылку сопернику и жди его подключения.</p>
+        </div>
+
+        <div id="guest-controls" class="hidden">
+            <p>Подключение по приглашению...</p>
         </div>
     </div>
 
-    <div class="board" id="board">
-        <div class="cell" onclick="makeMove(0)"></div>
-        <div class="cell" onclick="makeMove(1)"></div>
-        <div class="cell" onclick="makeMove(2)"></div>
-        <div class="cell" onclick="makeMove(3)"></div>
-        <div class="cell" onclick="makeMove(4)"></div>
-        <div class="cell" onclick="makeMove(5)"></div>
-        <div class="cell" onclick="makeMove(6)"></div>
-        <div class="cell" onclick="makeMove(7)"></div>
-        <div class="cell" onclick="makeMove(8)"></div>
+    <!-- Экран игры -->
+    <div id="game-card" class="card hidden">
+        <div id="status">Ожидание хода...</div>
+        <div id="board">
+            <div class="cell" onclick="makeMove(0)"></div>
+            <div class="cell" onclick="makeMove(1)"></div>
+            <div class="cell" onclick="makeMove(2)"></div>
+            <div class="cell" onclick="makeMove(3)"></div>
+            <div class="cell" onclick="makeMove(4)"></div>
+            <div class="cell" onclick="makeMove(5)"></div>
+            <div class="cell" onclick="makeMove(6)"></div>
+            <div class="cell" onclick="makeMove(7)"></div>
+            <div class="cell" onclick="makeMove(8)"></div>
+        </div>
     </div>
 
     <script>
-        let peer = new Peer();
+        const peer = new Peer();
         let conn = null;
         let mySymbol = '';
         let currentTurn = 'X';
-        let gameState = ["", "", "", "", "", "", "", "", ""];
-        let gameActive = false;
+        let boardState = Array(9).fill(null);
+
+        const urlParams = new URLSearchParams(window.location.search);
+        const targetPeerId = urlParams.get('room');
 
         peer.on('open', (id) => {
-            document.getElementById('my-id').innerText = id;
-            document.getElementById('status').innerText = 'Готов к подключению. Создайте или подключитесь!';
+            document.getElementById('loading').classList.add('hidden');
+            
+            if (targetPeerId) {
+                // Мы ГОСТЬ (перешли по ссылке с ?room=...)
+                document.getElementById('guest-controls').classList.remove('hidden');
+                document.getElementById('status').innerText = 'Подключение к игре...';
+                conn = peer.connect(targetPeerId);
+                setupConnection();
+                mySymbol = 'O';
+            } else {
+                // Мы ХОСТ (просто открыли чистый сайт)
+                document.getElementById('host-controls').classList.remove('hidden');
+                mySymbol = 'X';
+            }
         });
 
         peer.on('connection', (c) => {
             conn = c;
-            mySymbol = 'X';
             setupConnection();
-            document.getElementById('status').innerText = 'Игрок подключился! Ваш ход (X)';
-            gameActive = true;
         });
-
-        function connectToPeer() {
-            const destId = document.getElementById('peer-id-input').value;
-            if (!destId) return alert('Введите ID!');
-            conn = peer.connect(destId);
-            mySymbol = 'O';
-            setupConnection();
-        }
 
         function setupConnection() {
             conn.on('open', () => {
-                if (mySymbol === 'O') {
-                    document.getElementById('status').innerText = 'Подключено! Ход соперника (X)';
-                    gameActive = true;
-                }
+                // Полностью скрываем карточку подключения и показываем чистую игру!
+                document.getElementById('setup-card').classList.add('hidden');
+                document.getElementById('game-card').classList.remove('hidden');
+                updateStatus();
             });
 
             conn.on('data', (data) => {
-                gameState[data.index] = data.symbol;
-                renderBoard();
-                if (checkWin()) {
-                    document.getElementById('status').innerText = `Игрок ${data.symbol} победил!`;
-                    gameActive = false;
-                } else if (gameState.every(cell => cell !== "")) {
-                    document.getElementById('status').innerText = 'Ничья!';
-                    gameActive = false;
-                } else {
+                if (data.type === 'move') {
+                    boardState[data.index] = data.symbol;
                     currentTurn = mySymbol;
-                    document.getElementById('status').innerText = `Ваш ход (${mySymbol})`;
+                    renderBoard();
+                    checkWinner();
+                    updateStatus();
                 }
             });
         }
 
+        function copyLink() {
+            const link = `${window.location.origin}${window.location.pathname}?room=${peer.id}`;
+            navigator.clipboard.writeText(link);
+            alert('Ссылка скопирована! Отправь её другу.');
+        }
+
         function makeMove(index) {
-            if (!gameActive || gameState[index] !== "" || currentTurn !== mySymbol) return;
+            if (boardState[index] || currentTurn !== mySymbol || !conn) return;
 
-            gameState[index] = mySymbol;
+            boardState[index] = mySymbol;
+            conn.send({ type: 'move', index: index, symbol: mySymbol });
+            currentTurn = mySymbol === 'X' ? 'O' : 'X';
             renderBoard();
-            conn.send({ index: index, symbol: mySymbol });
-
-            if (checkWin()) {
-                document.getElementById('status').innerText = `Вы победили! 🎉`;
-                gameActive = false;
-            } else if (gameState.every(cell => cell !== "")) {
-                document.getElementById('status').innerText = 'Ничья!';
-                gameActive = false;
-            } else {
-                currentTurn = mySymbol === 'X' ? 'O' : 'X';
-                document.getElementById('status').innerText = 'Ход соперника...';
-            }
+            checkWinner();
+            updateStatus();
         }
 
         function renderBoard() {
             const cells = document.querySelectorAll('.cell');
             cells.forEach((cell, i) => {
-                cell.innerText = gameState[i];
+                cell.innerText = boardState[i] || '';
             });
         }
 
-        function checkWin() {
+        function updateStatus() {
+            const statusEl = document.getElementById('status');
+            if (currentTurn === mySymbol) {
+                statusEl.innerText = `Ваш ход (${mySymbol})`;
+                statusEl.style.color = '#007bff';
+            } else {
+                statusEl.innerText = `Ход соперника (${currentTurn})...`;
+                statusEl.style.color = '#666';
+            }
+        }
+
+        function checkWinner() {
             const wins = [
                 [0,1,2], [3,4,5], [6,7,8],
                 [0,3,6], [1,4,7], [2,5,8],
                 [0,4,8], [2,4,6]
             ];
-            return wins.some(w => gameState[w[0]] && gameState[w[0]] === gameState[w[1]] && gameState[w[0]] === gameState[w[2]]);
+            for (let w of wins) {
+                if (boardState[w[0]] && boardState[w[0]] === boardState[w[1]] && boardState[w[0]] === boardState[w[2]]) {
+                    const winner = boardState[w[0]];
+                    alert(winner === mySymbol ? 'Победа! 🎉' : 'Поражение! 😞');
+                    location.reload();
+                    return;
+                }
+            }
+            if (!boardState.includes(null)) {
+                alert('Ничья! 🤝');
+                location.reload();
+            }
         }
     </script>
 </body>
