@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Крестики-Нолики v1.7</title>
+    <title>Крестики-Нолики v1.9</title>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; font-family: sans-serif; }
@@ -12,21 +12,20 @@
         .version { font-size: 13px; color: #888; margin-bottom: 15px; font-weight: normal; }
         .game-card { background: white; padding: 25px; border-radius: 16px; box-shadow: 0 4px 20px rgba(0,0,0,0.08); width: 100%; max-width: 360px; text-align: center; }
         #status { font-size: 15px; font-weight: bold; margin-bottom: 15px; color: #555; }
-        .btn-invite { background: #007bff; color: white; border: none; padding: 12px 20px; font-size: 15px; border-radius: 10px; cursor: pointer; width: 100%; margin-bottom: 15px; font-weight: bold; }
+        .btn-invite { background: #007bff; color: white; border: none; padding: 12px 20px; font-size: 15px; border-radius: 10px; cursor: pointer; width: 100%; margin-bottom: 15px; font-weight: bold; transition: background .12s; }
         .btn-invite:hover { background: #0056b3; }
         #board { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; width: 100%; margin: 0 auto; }
-        /* Квадратные клетки с фиксированными пропорциями */
-        .cell { background: #f8f9fa; border: 2px solid #e9ecef; border-radius: 12px; font-size: 44px; font-weight: bold; display: flex; align-items: center; justify-content: center; cursor: pointer; user-select: none; color: #333; aspect-ratio: 1; }
+        .cell { background: #f8f9fa; border: 2px solid #e9ecef; border-radius: 12px; font-size: 44px; font-weight: bold; display: flex; align-items: center; justify-content: center; cursor: pointer; user-select: none; color: #333; aspect-ratio: 1; transition: background .12s; }
         .cell:hover { background: #e9ecef; }
         .hidden { display: none !important; }
     </style>
 </head>
 <body>
 
-    <h1>❌⭕ Крестики-Нолики <span class="version">v1.7</span></h1>
+    <h1>❌⭕ Крестики-Нолики <span class="version">v1.9</span></h1>
 
     <div class="game-card">
-        <div id="status">Подключение...</div>
+        <div id="status">Подключение к сети...</div>
         
         <button id="invite-btn" class="btn-invite hidden" onclick="copyLink()">🔗 Пригласить друга</button>
 
@@ -48,6 +47,7 @@
         let roomId = urlParams.get('room');
         const isHost = !roomId;
 
+        // Если это хост — при каждом старте создается уникальный ID комнаты
         if (isHost) {
             roomId = Math.random().toString(36).substring(2, 9);
         }
@@ -56,9 +56,12 @@
         let currentTurn = 'X';
         let boardState = Array(9).fill(null);
         let gameReady = false;
+        let gameOver = false;
 
-        // ТОТ САМЫЙ РАБОЧИЙ ПОДКЛЮЧАТЕЛЬ Supabase
-        const client = window.supabase.createClient('https://dmyudoxgljhfgasvvuvd.supabase.co', 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRteXVkb3hnbGpoZmdhc3Z2dXZkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzgxOTgwMTUsImV4cCI6MjA1Mzc3NDAxNX0.zV_7-B9J1pB3Z-aE5X9eO1d4lM8C6F2G1H0I3J4K5L6');
+        const client = window.supabase.createClient(
+            'https://dmyudoxgljhfgasvvuvd.supabase.co', 
+            'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRteXVkb3hnbGpoZmdhc3Z2dXZkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzgxOTgwMTUsImV4cCI6MjA1Mzc3NDAxNX0.zV_7-B9J1pB3Z-aE5X9eO1d4lM8C6F2G1H0I3J4K5L6'
+        );
         
         const channel = client.channel(`room_${roomId}`, {
             config: { broadcast: { self: false } }
@@ -66,7 +69,7 @@
 
         channel
             .on('broadcast', { event: 'game' }, (payload) => {
-                const data = payload.payload;
+                const data = payload?.payload ?? payload;
 
                 if (data.type === 'join' && isHost) {
                     gameReady = true;
@@ -82,6 +85,9 @@
                 }
 
                 if (data.type === 'move') {
+                    if (typeof data.index !== 'number' || data.index < 0 || data.index > 8) return;
+                    if (boardState[data.index] !== null) return;
+
                     boardState[data.index] = data.symbol;
                     currentTurn = data.symbol === 'X' ? 'O' : 'X';
                     renderBoard();
@@ -92,22 +98,22 @@
             .subscribe((status) => {
                 if (status === 'SUBSCRIBED') {
                     if (isHost) {
-                        document.getElementById('status').innerText = 'Ожидание соперника...';
                         document.getElementById('invite-btn').classList.remove('hidden');
                     } else {
                         channel.send({ type: 'broadcast', event: 'game', payload: { type: 'join' } });
                     }
+                    updateStatus();
                 }
             });
 
         function copyLink() {
             const link = `${window.location.origin}${window.location.pathname}?room=${roomId}`;
             navigator.clipboard.writeText(link);
-            alert('Ссылка скопирована!');
+            alert('Новая уникальная ссылка скопирована!');
         }
 
         function makeMove(index) {
-            if (!gameReady || boardState[index] || currentTurn !== mySymbol) return;
+            if (gameOver || !gameReady || boardState[index] || currentTurn !== mySymbol) return;
 
             boardState[index] = mySymbol;
             currentTurn = mySymbol === 'X' ? 'O' : 'X';
@@ -131,6 +137,15 @@
 
         function updateStatus() {
             const statusEl = document.getElementById('status');
+            
+            if (!gameReady) {
+                statusEl.innerText = isHost ? 'Ожидание соперника...' : 'Подключение к хосту...';
+                statusEl.style.color = '#666';
+                return;
+            }
+
+            if (gameOver) return;
+
             if (currentTurn === mySymbol) {
                 statusEl.innerText = `Ваш ход (${mySymbol})`;
                 statusEl.style.color = '#007bff';
@@ -149,18 +164,29 @@
             for (let w of wins) {
                 if (boardState[w[0]] && boardState[w[0]] === boardState[w[1]] && boardState[w[0]] === boardState[w[2]]) {
                     const winner = boardState[w[0]];
+                    gameOver = true;
                     setTimeout(() => {
                         alert(winner === mySymbol ? 'Победа! 🎉' : 'Поражение! 😞');
-                        location.href = window.location.pathname;
+                        resetGame();
                     }, 100);
                     return;
                 }
             }
             if (!boardState.includes(null)) {
+                gameOver = true;
                 setTimeout(() => {
                     alert('Ничья! 🤝');
-                    location.href = window.location.pathname;
+                    resetGame();
                 }, 100);
+            }
+        }
+
+        function resetGame() {
+            // Хост сбрасывает параметры URL, чтобы начать чистую игру с НОВОЙ ссылкой
+            if (isHost) {
+                location.href = window.location.pathname;
+            } else {
+                location.href = `${window.location.pathname}?room=${roomId}`;
             }
         }
     </script>
