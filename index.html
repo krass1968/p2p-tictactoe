@@ -3,17 +3,23 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Крестики-Нолики v2.3</title>
+    <title>Крестики-Нолики v2.4</title>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; font-family: sans-serif; }
         body { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; background: #f0f2f5; padding: 20px; }
+        
+        /* Кнопка НАД заголовком и игрой */
+        .btn-invite { background: #007bff; color: white; border: none; padding: 12px 24px; font-size: 15px; border-radius: 10px; cursor: pointer; width: 100%; max-width: 360px; margin-bottom: 20px; font-weight: bold; box-shadow: 0 2px 10px rgba(0,123,255,0.2); transition: background .12s; }
+        .btn-invite:hover { background: #0056b3; }
+        .btn-connected { background: #28a745 !important; cursor: default; } /* Зеленая плашка */
+
         h1 { margin-bottom: 5px; text-align: center; color: #1a1a1a; }
         .version { font-size: 13px; color: #888; margin-bottom: 15px; font-weight: normal; }
+        
         .game-card { background: white; padding: 25px; border-radius: 16px; box-shadow: 0 4px 20px rgba(0,0,0,0.08); width: 100%; max-width: 360px; text-align: center; }
         #status { font-size: 16px; font-weight: bold; margin-bottom: 15px; color: #555; }
-        .btn-invite { background: #007bff; color: white; border: none; padding: 12px 20px; font-size: 15px; border-radius: 10px; cursor: pointer; width: 100%; margin-bottom: 15px; font-weight: bold; }
-        .btn-invite:hover { background: #0056b3; }
+        
         #board { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; width: 100%; margin: 0 auto; }
         .cell { background: #f8f9fa; border: 2px solid #e9ecef; border-radius: 12px; font-size: 44px; font-weight: bold; display: flex; align-items: center; justify-content: center; cursor: pointer; user-select: none; color: #333; aspect-ratio: 1; }
         .cell:hover { background: #e9ecef; }
@@ -22,12 +28,13 @@
 </head>
 <body>
 
-    <h1>❌⭕ Крестики-Нолики <span class="version">v2.3</span></h1>
+    <!-- Кнопка сверху над игрой -->
+    <button id="invite-btn" class="btn-invite hidden" onclick="copyLink()">🔗 Пригласить друга</button>
+
+    <h1>❌⭕ Крестики-Нолики <span class="version">v2.4</span></h1>
 
     <div class="game-card">
         <div id="status">Загрузка...</div>
-        
-        <button id="invite-btn" class="btn-invite hidden" onclick="copyLink()">🔗 Пригласить друга</button>
 
         <div id="board">
             <div class="cell" onclick="makeMove(0)"></div>
@@ -58,7 +65,6 @@
         const statusEl = document.getElementById('status');
         const inviteBtn = document.getElementById('invite-btn');
 
-        // Показываем четкий статус сразу при старте
         if (isHost) {
             inviteBtn.classList.remove('hidden');
         }
@@ -77,7 +83,28 @@
             .on('broadcast', { event: 'game' }, (payload) => {
                 const data = payload?.payload ?? payload;
 
+                // 1. Соперник зашел: Хост меняет кнопку на ЗЕЛЕНУЮ плашку "Соперник в игре"
+                if (data.type === 'ping' && isHost) {
+                    setOpponentConnected();
+                    // Отправляем сопернику текущее состояние доски, чтобы у него точно всё отобразилось!
+                    channel.send({
+                        type: 'broadcast',
+                        event: 'game',
+                        payload: { type: 'sync', boardState: boardState, currentTurn: currentTurn }
+                    });
+                }
+
+                // 2. Синхронизация доски для гостя при входе
+                if (data.type === 'sync' && !isHost) {
+                    boardState = data.boardState;
+                    currentTurn = data.currentTurn;
+                    renderBoard();
+                    updateStatus();
+                }
+
+                // 3. Обработка хода
                 if (data.type === 'move') {
+                    if (isHost) setOpponentConnected();
                     boardState[data.index] = data.symbol;
                     currentTurn = data.symbol === 'X' ? 'O' : 'X';
                     renderBoard();
@@ -85,7 +112,18 @@
                     updateStatus();
                 }
             })
-            .subscribe();
+            .subscribe((status) => {
+                if (status === 'SUBSCRIBED' && !isHost) {
+                    // Гость сразу подает голос хосту
+                    channel.send({ type: 'broadcast', event: 'game', payload: { type: 'ping' } });
+                }
+            });
+
+        function setOpponentConnected() {
+            inviteBtn.innerText = '🟢 Соперник в игре';
+            inviteBtn.classList.add('btn-connected');
+            inviteBtn.onclick = null; // Отключаем клик по зеленой кнопке
+        }
 
         function copyLink() {
             const link = `${window.location.origin}${window.location.pathname}?room=${roomId}`;
