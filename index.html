@@ -3,14 +3,15 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Крестики-Нолики v1.1</title>
+    <title>Крестики-Нолики v1.2</title>
+    <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; font-family: sans-serif; }
         body { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; background: #f0f2f5; padding: 20px; }
         h1 { margin-bottom: 5px; text-align: center; color: #1a1a1a; }
         .version { font-size: 13px; color: #888; margin-bottom: 15px; font-weight: normal; }
         .game-card { background: white; padding: 25px; border-radius: 16px; box-shadow: 0 4px 20px rgba(0,0,0,0.08); width: 100%; max-width: 360px; text-align: center; }
-        #status { font-size: 16px; font-weight: bold; margin-bottom: 15px; color: #555; }
+        #status { font-size: 15px; font-weight: bold; margin-bottom: 15px; color: #555; }
         .btn-invite { background: #007bff; color: white; border: none; padding: 12px 20px; font-size: 15px; border-radius: 10px; cursor: pointer; width: 100%; margin-bottom: 15px; font-weight: bold; }
         .btn-invite:hover { background: #0056b3; }
         #board { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; width: 300px; height: 300px; margin: 0 auto; }
@@ -21,10 +22,10 @@
 </head>
 <body>
 
-    <h1>❌⭕ Крестики-Нолики <span class="version">v1.1</span></h1>
+    <h1>❌⭕ Крестики-Нолики <span class="version">v1.2</span></h1>
 
     <div class="game-card">
-        <div id="status">Подключение...</div>
+        <div id="status">Инициализация...</div>
         
         <button id="invite-btn" class="btn-invite hidden" onclick="copyLink()">🔗 Пригласить друга</button>
 
@@ -46,64 +47,57 @@
         let roomId = urlParams.get('room');
         const isHost = !roomId;
 
-        if (isHost) {
-            roomId = Math.random().toString(36).substring(2, 9);
-        }
-
         const mySymbol = isHost ? 'X' : 'O';
         let currentTurn = 'X';
         let boardState = Array(9).fill(null);
+        let conn = null;
         let gameReady = false;
 
-        // Общественный быстрый WebSocket от PieSocket
-        const apiKey = 'demo';
-        const socket = new WebSocket(`wss://demo.piesocket.com/v3/${roomId}?api_key=${apiKey}&notify_self=0`);
+        const peer = new Peer(isHost ? undefined : null, { debug: 2 });
 
-        socket.onopen = () => {
+        peer.on('open', (id) => {
             if (isHost) {
+                roomId = id;
                 document.getElementById('status').innerText = 'Ожидание соперника...';
                 document.getElementById('invite-btn').classList.remove('hidden');
             } else {
-                // Гость вошел и кричит хосту: "Я тут!"
-                sendSignal({ type: 'join' });
+                document.getElementById('status').innerText = 'Подключение к хосту...';
+                conn = peer.connect(roomId, { reliable: true });
+                setupConnection();
             }
-        };
+        });
 
-        socket.onmessage = (event) => {
-            const data = JSON.parse(event.data);
+        peer.on('connection', (c) => {
+            conn = c;
+            setupConnection();
+        });
 
-            if (data.type === 'join' && isHost) {
+        peer.on('error', (err) => {
+            document.getElementById('status').innerText = 'Ошибка сети: ' + err.type;
+        });
+
+        function setupConnection() {
+            conn.on('open', () => {
                 gameReady = true;
                 document.getElementById('invite-btn').classList.add('hidden');
-                sendSignal({ type: 'start' });
                 updateStatus();
-            }
+            });
 
-            if (data.type === 'start' && !isHost) {
-                gameReady = true;
-                document.getElementById('invite-btn').classList.add('hidden');
-                updateStatus();
-            }
-
-            if (data.type === 'move') {
-                boardState[data.index] = data.symbol;
-                currentTurn = data.symbol === 'X' ? 'O' : 'X';
-                renderBoard();
-                checkWinner();
-                updateStatus();
-            }
-        };
-
-        function sendSignal(msg) {
-            if (socket.readyState === WebSocket.OPEN) {
-                socket.send(JSON.stringify(msg));
-            }
+            conn.on('data', (data) => {
+                if (data.type === 'move') {
+                    boardState[data.index] = data.symbol;
+                    currentTurn = data.symbol === 'X' ? 'O' : 'X';
+                    renderBoard();
+                    checkWinner();
+                    updateStatus();
+                }
+            });
         }
 
         function copyLink() {
             const link = `${window.location.origin}${window.location.pathname}?room=${roomId}`;
             navigator.clipboard.writeText(link);
-            alert('Ссылка v1.1 скопирована!');
+            alert('Ссылка v1.2 скопирована!');
         }
 
         function makeMove(index) {
@@ -115,11 +109,9 @@
             checkWinner();
             updateStatus();
 
-            sendSignal({
-                type: 'move',
-                index: index,
-                symbol: mySymbol
-            });
+            if (conn && conn.open) {
+                conn.send({ type: 'move', index: index, symbol: mySymbol });
+            }
         }
 
         function renderBoard() {
