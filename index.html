@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Крестики-Нолики v2.1</title>
+    <title>Крестики-Нолики v2.2</title>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; font-family: sans-serif; }
@@ -12,17 +12,17 @@
         .version { font-size: 13px; color: #888; margin-bottom: 15px; font-weight: normal; }
         .game-card { background: white; padding: 25px; border-radius: 16px; box-shadow: 0 4px 20px rgba(0,0,0,0.08); width: 100%; max-width: 360px; text-align: center; }
         #status { font-size: 15px; font-weight: bold; margin-bottom: 15px; color: #555; }
-        .btn-invite { background: #007bff; color: white; border: none; padding: 12px 20px; font-size: 15px; border-radius: 10px; cursor: pointer; width: 100%; margin-bottom: 15px; font-weight: bold; transition: background .12s; }
+        .btn-invite { background: #007bff; color: white; border: none; padding: 12px 20px; font-size: 15px; border-radius: 10px; cursor: pointer; width: 100%; margin-bottom: 15px; font-weight: bold; }
         .btn-invite:hover { background: #0056b3; }
         #board { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; width: 100%; margin: 0 auto; }
-        .cell { background: #f8f9fa; border: 2px solid #e9ecef; border-radius: 12px; font-size: 44px; font-weight: bold; display: flex; align-items: center; justify-content: center; cursor: pointer; user-select: none; color: #333; aspect-ratio: 1; transition: background .12s; }
+        .cell { background: #f8f9fa; border: 2px solid #e9ecef; border-radius: 12px; font-size: 44px; font-weight: bold; display: flex; align-items: center; justify-content: center; cursor: pointer; user-select: none; color: #333; aspect-ratio: 1; }
         .cell:hover { background: #e9ecef; }
         .hidden { display: none !important; }
     </style>
 </head>
 <body>
 
-    <h1>❌⭕ Крестики-Нолики <span class="version">v2.1</span></h1>
+    <h1>❌⭕ Крестики-Нолики <span class="version">v2.2</span></h1>
 
     <div class="game-card">
         <div id="status">Инициализация...</div>
@@ -54,18 +54,16 @@
         const mySymbol = isHost ? 'X' : 'O';
         let currentTurn = 'X';
         let boardState = Array(9).fill(null);
-        let gameReady = false;
-        let gameOver = false;
-        let joinInterval = null;
 
+        // Старый простой статус
         const statusEl = document.getElementById('status');
         const inviteBtn = document.getElementById('invite-btn');
 
         if (isHost) {
-            statusEl.innerText = 'Ожидание соперника...';
+            statusEl.innerText = 'Ожидание соперника (Ход X)';
             inviteBtn.classList.remove('hidden');
         } else {
-            statusEl.innerText = 'Подключение к хосту...';
+            statusEl.innerText = 'Игра началась! (Ход X)';
         }
 
         const client = window.supabase.createClient(
@@ -77,31 +75,12 @@
             config: { broadcast: { self: false } }
         });
 
+        // Прямой прием ходов без сложных проверок готовности
         channel
             .on('broadcast', { event: 'game' }, (payload) => {
                 const data = payload?.payload ?? payload;
 
-                // Хост ловит стук от гостя
-                if (data.type === 'join' && isHost) {
-                    gameReady = true;
-                    inviteBtn.classList.add('hidden');
-                    // Отвечаем гостю, что игра началась
-                    channel.send({ type: 'broadcast', event: 'game', payload: { type: 'start' } });
-                    updateStatus();
-                }
-
-                // Гость ловит ответ от хоста
-                if (data.type === 'start' && !isHost) {
-                    gameReady = true;
-                    if (joinInterval) clearInterval(joinInterval); // Перестаем "стучаться"
-                    inviteBtn.classList.add('hidden');
-                    updateStatus();
-                }
-
                 if (data.type === 'move') {
-                    if (typeof data.index !== 'number' || data.index < 0 || data.index > 8) return;
-                    if (boardState[data.index] !== null) return;
-
                     boardState[data.index] = data.symbol;
                     currentTurn = data.symbol === 'X' ? 'O' : 'X';
                     renderBoard();
@@ -109,19 +88,7 @@
                     updateStatus();
                 }
             })
-            .subscribe((status) => {
-                if (status === 'SUBSCRIBED' && !isHost) {
-                    // Гость начнет стучаться каждые 1.5 сек, пока хост не ответит
-                    sendJoinSignal();
-                    joinInterval = setInterval(sendJoinSignal, 1500);
-                }
-            });
-
-        function sendJoinSignal() {
-            if (!gameReady) {
-                channel.send({ type: 'broadcast', event: 'game', payload: { type: 'join' } });
-            }
-        }
+            .subscribe();
 
         function copyLink() {
             const link = `${window.location.origin}${window.location.pathname}?room=${roomId}`;
@@ -130,7 +97,8 @@
         }
 
         function makeMove(index) {
-            if (gameOver || !gameReady || boardState[index] || currentTurn !== mySymbol) return;
+            // Простая проверка: если клетка занята или сейчас не твой ход — игнор
+            if (boardState[index] || currentTurn !== mySymbol) return;
 
             boardState[index] = mySymbol;
             currentTurn = mySymbol === 'X' ? 'O' : 'X';
@@ -138,6 +106,7 @@
             checkWinner();
             updateStatus();
 
+            // Просто отправляем ход в канал
             channel.send({
                 type: 'broadcast',
                 event: 'game',
@@ -153,14 +122,6 @@
         }
 
         function updateStatus() {
-            if (!gameReady) {
-                statusEl.innerText = isHost ? 'Ожидание соперника...' : 'Подключение к хосту...';
-                statusEl.style.color = '#666';
-                return;
-            }
-
-            if (gameOver) return;
-
             if (currentTurn === mySymbol) {
                 statusEl.innerText = `Ваш ход (${mySymbol})`;
                 statusEl.style.color = '#007bff';
@@ -179,7 +140,6 @@
             for (let w of wins) {
                 if (boardState[w[0]] && boardState[w[0]] === boardState[w[1]] && boardState[w[0]] === boardState[w[2]]) {
                     const winner = boardState[w[0]];
-                    gameOver = true;
                     setTimeout(() => {
                         alert(winner === mySymbol ? 'Победа! 🎉' : 'Поражение! 😞');
                         resetGame();
@@ -188,7 +148,6 @@
                 }
             }
             if (!boardState.includes(null)) {
-                gameOver = true;
                 setTimeout(() => {
                     alert('Ничья! 🤝');
                     resetGame();
@@ -198,7 +157,7 @@
 
         function resetGame() {
             if (isHost) {
-                location.href = window.location.pathname;
+                location.href = window.location.pathname; // Создает новую комнату для Хоста
             } else {
                 location.href = `${window.location.pathname}?room=${roomId}`;
             }
