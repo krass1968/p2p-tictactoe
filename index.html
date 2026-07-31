@@ -280,7 +280,7 @@
   <div class="title-row">
     <div class="icons"><span class="x">✕</span><span class="o">◯</span></div>
     <h1>Крестики-Нолики</h1>
-    <span class="ver">v3.3</span>
+    <span class="ver">v3.4</span>
   </div>
 
   <div class="card">
@@ -396,6 +396,20 @@
         };
         c.peerConnection.onicegatheringstatechange = () => {
           logNet('Сбор сетевых маршрутов: ' + c.peerConnection.iceGatheringState);
+        };
+        const seenTypes = new Set();
+        c.peerConnection.onicecandidate = (e) => {
+          if(e.candidate && e.candidate.candidate){
+            const type = e.candidate.type || (e.candidate.candidate.match(/typ (\w+)/) || [])[1];
+            if(type && !seenTypes.has(type)){
+              seenTypes.add(type);
+              const label = type === 'relay' ? 'relay (TURN)' : type === 'srflx' ? 'srflx (STUN)' : type === 'host' ? 'host (локальный)' : type;
+              logNet('Найден маршрут типа: ' + label);
+            }
+          }
+        };
+        c.peerConnection.onicecandidateerror = (e) => {
+          logNet('Ошибка сбора маршрута: ' + (e.errorCode||'?') + ' ' + (e.errorText||'') + (e.url ? ' [' + e.url + ']' : ''), 'warn');
         };
       } else if(attempts < 20){
         setTimeout(() => tryAttach(attempts+1), 250);
