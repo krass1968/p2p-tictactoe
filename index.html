@@ -1,0 +1,647 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Крестики-Нолики</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Caveat:wght@500;700&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/mqtt@5.3.4/dist/mqtt.min.js"></script>
+<style>
+  :root{
+    --ink-x:#b0271a;      /* красная паста */
+    --ink-o:#1a3fb8;      /* синяя паста */
+    --ink-dark:#22306b;   /* тёмно-синяя, как сетка на фото */
+    --paper:#f3ecd8;
+    --green:#1f7a45;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0; padding:0;}
+  body{
+    background:#2b2118;
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    display:flex; justify-content:center;
+    padding:0;
+  }
+  .hand{font-family:'Caveat',"Segoe Script","Bradley Hand",cursive;}
+
+  .wrap{position:relative; width:100%; max-width:1500px;}
+
+  .stage{position:relative; width:100%; overflow:hidden;}
+  .scene{
+    position:relative; width:100%; aspect-ratio:2816/1536;
+    background:url('tictactoe_bgr.jpg') center/cover no-repeat;
+  }
+
+  /* ---- игровое поле, посаженное точно на нарисованную сетку ---- */
+  .grid{
+    position:absolute;
+    left:45.63%; top:33.07%; width:20.77%; height:37.37%;
+    display:grid; grid-template-columns:repeat(3,1fr); grid-template-rows:repeat(3,1fr);
+  }
+  .cell{position:relative; cursor:pointer;}
+  .cell::after{
+    content:''; position:absolute; inset:6%;
+    border-radius:50%; background:rgba(40,60,140,.07);
+    opacity:0; transition:opacity .15s ease;
+  }
+  .grid:not(.disabled) .cell:not(.filled):hover::after{opacity:1;}
+  .cell.filled{cursor:default;}
+  .cell svg{position:absolute; inset:0; width:100%; height:100%; overflow:visible;}
+  .winline{position:absolute; inset:0; pointer-events:none; overflow:visible;}
+
+  /* ---- надписи и панели: на десктопе лежат прямо на фото ---- */
+  .status{
+    position:absolute; left:45.63%; top:25.5%; width:20.77%;
+    text-align:center; font-size:clamp(15px,2.05vw,30px); font-weight:700;
+    color:var(--ink-dark); line-height:1.1; margin:0;
+  }
+  .status.mine{color:var(--ink-o);}
+  .status.theirs{color:#6b6f7d;}
+  .status.waiting{color:#6b6f7d;}
+  .status.win{color:var(--green);}
+  .status.lose{color:var(--ink-x);}
+  .status.draw{color:#6b6f7d;}
+
+  .under-note{
+    position:absolute; left:45.63%; top:71.6%; width:20.77%;
+    text-align:center; font-size:clamp(12px,1.45vw,21px); color:#6b6f7d;
+  }
+
+  .rematch-btn{
+    position:absolute; left:45.63%; top:75.4%; width:20.77%;
+    display:none; border:none; background:none; cursor:pointer;
+    font-family:'Caveat',cursive; font-size:clamp(14px,1.9vw,28px); font-weight:700;
+    color:var(--ink-o); text-decoration:underline; text-underline-offset:5px;
+    text-decoration-thickness:2px; padding:4px;
+  }
+  .rematch-btn:disabled{opacity:.35; cursor:default; text-decoration:none;}
+
+  .score{
+    position:absolute; left:26.2%; top:32%; width:16.5%;
+    display:none; color:var(--ink-dark);
+  }
+  .score .ttl{
+    font-size:clamp(15px,2.1vw,31px); font-weight:700; margin-bottom:.25em;
+    border-bottom:2px solid rgba(34,48,107,.55); display:inline-block; padding-right:1.2em;
+  }
+  .score .row{
+    display:flex; justify-content:space-between; align-items:baseline;
+    font-size:clamp(13px,1.75vw,26px); line-height:1.5;
+  }
+  .score .row .n{font-weight:700; min-width:1.4em; text-align:right;}
+  .score .row.me .n{color:var(--ink-o);}
+  .score .row.op .n{color:var(--ink-x);}
+
+  .invite-btn{
+    position:absolute; left:76.8%; top:80.5%; width:21.5%;
+    border:none; cursor:pointer; padding:.75em .6em;
+    background:var(--paper); color:var(--ink-dark);
+    font-family:'Caveat',cursive; font-weight:700;
+    font-size:clamp(14px,1.9vw,28px); line-height:1.15;
+    border-radius:3px; transform:rotate(-1.4deg);
+    box-shadow:0 6px 16px rgba(0,0,0,.45), inset 0 0 0 1px rgba(0,0,0,.08);
+  }
+  .invite-btn.connected{background:#dff0e0; color:var(--green);}
+  .invite-btn:disabled{cursor:default;}
+
+  /* ---- телефон: кадрируем фото на сетку, панели выносим вниз ---- */
+  @media (max-width:760px){
+    body{background:#241b14; flex-direction:column;}
+    .stage{height:93vw;}
+    .scene{position:absolute; width:380vw; aspect-ratio:2816/1536; left:-162.9vw; top:-60.5vw;}
+    .status, .under-note, .rematch-btn, .score, .invite-btn{
+      position:static; left:auto; top:auto; width:auto; transform:none;
+    }
+    .hud{padding:14px 18px 34px; display:flex; flex-direction:column; align-items:center; gap:10px;}
+    .status{font-size:26px; order:1;}
+    .under-note{font-size:17px; order:2;}
+    .rematch-btn{font-size:24px; order:3;}
+    .score{width:100%; max-width:340px; order:4; background:rgba(243,236,216,.94);
+           border-radius:8px; padding:12px 16px; margin-top:6px;}
+    .score .ttl{font-size:24px;}
+    .score .row{font-size:20px;}
+    .invite-btn{order:5; width:100%; max-width:340px; font-size:24px; padding:14px;}
+  }
+  @media (min-width:761px){
+    .hud{display:contents;}
+  }
+
+  /* ---- модалка приглашения ---- */
+  .modal-backdrop{
+    position:fixed; inset:0; background:rgba(20,16,12,.6);
+    display:none; align-items:center; justify-content:center; padding:20px; z-index:10;
+  }
+  .modal-backdrop.show{display:flex;}
+  .modal{
+    background:var(--paper); border-radius:6px; padding:24px; width:100%; max-width:390px;
+    box-shadow:0 24px 60px rgba(0,0,0,.5); color:#2a2419; transform:rotate(-.5deg);
+  }
+  .modal h2{margin:0 0 6px; font-size:26px; font-family:'Caveat',cursive; color:var(--ink-dark);}
+  .modal p{margin:0 0 16px; font-size:14px; color:#6a6252; line-height:1.5;}
+  .link-row{display:flex; gap:8px; margin-bottom:14px;}
+  .link-row input{
+    flex:1; border:1px solid #c9bfa4; border-radius:4px; background:#fbf7ec;
+    padding:10px 12px; font-size:13px; color:#2a2419;
+  }
+  .link-row button{
+    border:none; border-radius:4px; background:var(--ink-o); color:#fff;
+    font-weight:700; font-size:13px; padding:0 16px; cursor:pointer;
+  }
+  .waiting-spinner{display:flex; align-items:center; gap:10px; font-size:13px; color:#6a6252; margin-bottom:14px;}
+  .dot{width:8px; height:8px; border-radius:50%; background:var(--ink-o); animation:pulse 1s infinite ease-in-out;}
+  @keyframes pulse{0%,100%{opacity:.3;}50%{opacity:1;}}
+  .modal .close{
+    width:100%; border:none; background:#e6dcc4; color:#2a2419;
+    font-weight:700; border-radius:4px; padding:12px; cursor:pointer; font-size:14px;
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="stage">
+    <div class="scene">
+      <div id="grid" class="grid disabled"></div>
+      <svg id="winline" class="winline" viewBox="0 0 300 300" preserveAspectRatio="none"></svg>
+    </div>
+  </div>
+
+  <div class="hud">
+    <p id="status" class="status hand waiting">Пригласите друга</p>
+    <div id="infoLine" class="under-note hand"></div>
+    <button id="rematchBtn" class="rematch-btn">новая игра</button>
+
+    <div id="scorePanel" class="score hand">
+      <div class="ttl">Счёт</div>
+      <div class="row me"><span>Вы</span><span class="n" id="scoreMine">0</span></div>
+      <div class="row"><span>Ничьи</span><span class="n" id="scoreDraws">0</span></div>
+      <div class="row op"><span>Соперник</span><span class="n" id="scoreOpp">0</span></div>
+    </div>
+
+    <button id="inviteBtn" class="invite-btn">🔗 Пригласить друга</button>
+  </div>
+</div>
+
+<div class="modal-backdrop" id="modalBackdrop">
+  <div class="modal">
+    <h2>Пригласить друга</h2>
+    <p>Отправьте эту ссылку сопернику — как только он откроет её, игра начнётся.</p>
+    <div class="link-row">
+      <input id="inviteLink" type="text" readonly>
+      <button id="copyBtn">Копировать</button>
+    </div>
+    <div class="waiting-spinner"><span class="dot"></span> Ожидание соперника…</div>
+    <button class="close" id="closeModal">Закрыть</button>
+  </div>
+</div>
+
+<script>
+(function(){
+  // ---------- DOM ----------
+  const board = document.getElementById('grid');
+  const statusEl = document.getElementById('status');
+  const inviteBtn = document.getElementById('inviteBtn');
+  const modalBackdrop = document.getElementById('modalBackdrop');
+  const inviteLinkInput = document.getElementById('inviteLink');
+  const copyBtn = document.getElementById('copyBtn');
+  const closeModal = document.getElementById('closeModal');
+  const infoLine = document.getElementById('infoLine');
+  const rematchBtn = document.getElementById('rematchBtn');
+  const scoreboard = document.getElementById('scorePanel');
+  const scoreMineEl = document.getElementById('scoreMine');
+  const scoreOppEl = document.getElementById('scoreOpp');
+  const scoreDrawsEl = document.getElementById('scoreDraws');
+  const winlineSvg = document.getElementById('winline');
+
+  // ---------- Network config ----------
+  const BROKERS = [
+    'wss://broker.emqx.io:8084/mqtt',
+    'wss://broker.hivemq.com:8884/mqtt',
+    'wss://test.mosquitto.org:8081/mqtt'
+  ];
+  const TOPIC_PREFIX = 'ttt-krass/';
+  const CONNECT_TIMEOUT = 8000;
+
+  // ---------- State ----------
+  let cells = Array(9).fill(null);
+  let mySymbol = null;
+  let myTurn = false;
+  let gameOver = false;
+  let isHost = false;
+  let score = {mine:0, opp:0, draws:0};
+
+  let client = null;
+  let topic = null;
+  let roomCode = null;
+  const myId = Math.random().toString(36).slice(2, 10);
+  let opponentId = null;
+  let brokerIndex = 0;
+  let connectTimer = null;
+  let peerWatchdog = null;
+
+  function logNet(msg){ console.log('[net] ' + msg); }
+
+  // ---------- Рисование от руки ----------
+  const rnd = (a,b) => a + Math.random()*(b-a);
+
+  function drawX(){
+    const svg = document.createElementNS('http://www.w3.org/2000/svg','svg');
+    svg.setAttribute('viewBox','0 0 100 100');
+    const mk = (d) => {
+      const p = document.createElementNS('http://www.w3.org/2000/svg','path');
+      p.setAttribute('d', d);
+      p.setAttribute('fill','none');
+      p.setAttribute('stroke','var(--ink-x)');
+      p.setAttribute('stroke-width', rnd(4.2,5.4).toFixed(1));
+      p.setAttribute('stroke-linecap','round');
+      return p;
+    };
+    // две штриха с лёгким «дрожанием», как шариковой ручкой
+    const d1 = 'M ' + rnd(18,24) + ',' + rnd(18,24) +
+               ' Q ' + rnd(46,54) + ',' + rnd(44,56) + ' ' + rnd(76,82) + ',' + rnd(76,82);
+    const d2 = 'M ' + rnd(76,82) + ',' + rnd(18,24) +
+               ' Q ' + rnd(46,54) + ',' + rnd(44,56) + ' ' + rnd(18,24) + ',' + rnd(76,82);
+    svg.appendChild(mk(d1));
+    svg.appendChild(mk(d2));
+    animate(svg);
+    return svg;
+  }
+
+  function drawO(){
+    const svg = document.createElementNS('http://www.w3.org/2000/svg','svg');
+    svg.setAttribute('viewBox','0 0 100 100');
+    const cx = rnd(48,52), cy = rnd(48,52);
+    const rx = rnd(27,31), ry = rnd(26,30);
+    const start = rnd(-1.4,-0.9);
+    const turns = rnd(6.5, 6.9);            // чуть больше полного круга — с «нахлёстом»
+    let d = '';
+    const steps = 26;
+    for(let i=0;i<=steps;i++){
+      const t = start + (turns/steps)*i;
+      const jitter = 1 + Math.sin(i*1.7)*0.018 + rnd(-0.014,0.014);
+      const x = cx + Math.cos(t)*rx*jitter;
+      const y = cy + Math.sin(t)*ry*jitter;
+      d += (i===0 ? 'M ' : ' L ') + x.toFixed(1) + ',' + y.toFixed(1);
+    }
+    const p = document.createElementNS('http://www.w3.org/2000/svg','path');
+    p.setAttribute('d', d);
+    p.setAttribute('fill','none');
+    p.setAttribute('stroke','var(--ink-o)');
+    p.setAttribute('stroke-width', rnd(4.2,5.2).toFixed(1));
+    p.setAttribute('stroke-linecap','round');
+    p.setAttribute('stroke-linejoin','round');
+    svg.appendChild(p);
+    animate(svg);
+    return svg;
+  }
+
+  function animate(svg){
+    requestAnimationFrame(() => {
+      svg.querySelectorAll('path').forEach((p, i) => {
+        const len = p.getTotalLength();
+        p.style.strokeDasharray = len;
+        p.style.strokeDashoffset = len;
+        p.style.transition = 'stroke-dashoffset .28s ease-out ' + (i*0.16) + 's';
+        requestAnimationFrame(() => { p.style.strokeDashoffset = '0'; });
+      });
+    });
+  }
+
+  function drawWinLine(line){
+    const [a,,c] = line;
+    const cw = 100, ch = 100;
+    const pos = i => ({ x:(i%3)*cw + cw/2, y:Math.floor(i/3)*ch + ch/2 });
+    const p1 = pos(a), p2 = pos(c);
+    const dx = p2.x-p1.x, dy = p2.y-p1.y;
+    const len = Math.hypot(dx,dy) || 1;
+    const ex = dx/len*22, ey = dy/len*22;      // выносим штрих за края клеток
+    const mx = (p1.x+p2.x)/2 + rnd(-6,6), my = (p1.y+p2.y)/2 + rnd(-6,6);
+    const d = 'M ' + (p1.x-ex) + ',' + (p1.y-ey) +
+              ' Q ' + mx + ',' + my + ' ' + (p2.x+ex) + ',' + (p2.y+ey);
+    const p = document.createElementNS('http://www.w3.org/2000/svg','path');
+    p.setAttribute('d', d);
+    p.setAttribute('fill','none');
+    p.setAttribute('stroke','var(--ink-x)');
+    p.setAttribute('stroke-width','5');
+    p.setAttribute('stroke-linecap','round');
+    winlineSvg.appendChild(p);
+    animate(winlineSvg);
+  }
+
+  // ---------- Board ----------
+  for(let i=0;i<9;i++){
+    const c = document.createElement('div');
+    c.className = 'cell';
+    c.dataset.i = i;
+    c.addEventListener('click', () => onCellClick(i));
+    board.appendChild(c);
+  }
+
+  function renderCell(i){
+    const el = board.children[i];
+    const v = cells[i];
+    el.innerHTML = '';
+    el.className = 'cell' + (v ? ' filled' : '');
+    if(v) el.appendChild(v === 'X' ? drawX() : drawO());
+  }
+  function renderBoard(){ for(let i=0;i<9;i++) renderCell(i); }
+
+  function setStatus(text, cls){
+    statusEl.textContent = text;
+    statusEl.className = 'status hand ' + cls;
+  }
+
+  const WIN_LINES = [
+    [0,1,2],[3,4,5],[6,7,8],
+    [0,3,6],[1,4,7],[2,5,8],
+    [0,4,8],[2,4,6]
+  ];
+
+  function checkWinner(bd){
+    for(const line of WIN_LINES){
+      const [a,b,c] = line;
+      if(bd[a] && bd[a]===bd[b] && bd[a]===bd[c]) return {symbol:bd[a], line};
+    }
+    if(bd.every(v=>v)) return {draw:true};
+    return null;
+  }
+
+  function updateScoreboard(){
+    scoreMineEl.textContent = score.mine;
+    scoreOppEl.textContent = score.opp;
+    scoreDrawsEl.textContent = score.draws;
+  }
+  function resetScore(){ score = {mine:0, opp:0, draws:0}; updateScoreboard(); }
+
+  function onCellClick(i){
+    if(gameOver || !myTurn || cells[i] || !client) return;
+    applyMove(i, mySymbol);
+    send({type:'move', index:i, symbol:mySymbol});
+    myTurn = false;
+    updateTurnStatus();
+  }
+
+  function applyMove(i, symbol){
+    cells[i] = symbol;
+    renderCell(i);
+    const result = checkWinner(cells);
+    if(result){
+      gameOver = true;
+      board.classList.add('disabled');
+      if(result.draw){
+        setStatus('Ничья', 'draw');
+        score.draws++;
+      } else if(result.symbol === mySymbol){
+        setStatus('Вы выиграли!', 'win');
+        drawWinLine(result.line);
+        score.mine++;
+      } else {
+        setStatus('Соперник выиграл', 'lose');
+        drawWinLine(result.line);
+        score.opp++;
+      }
+      updateScoreboard();
+      rematchBtn.disabled = false;
+    }
+  }
+
+  function updateTurnStatus(){
+    if(gameOver) return;
+    if(myTurn){
+      setStatus('Ваш ход', 'mine');
+      board.classList.remove('disabled');
+    } else {
+      setStatus('Соперник ходит', 'theirs');
+      board.classList.add('disabled');
+    }
+  }
+
+  function resetGame(){
+    cells = Array(9).fill(null);
+    gameOver = false;
+    winlineSvg.innerHTML = '';
+    renderBoard();
+    myTurn = (mySymbol === 'X');
+    updateTurnStatus();
+    infoLine.textContent = 'вы играете за ' + (mySymbol === 'X' ? 'крестики' : 'нолики');
+    rematchBtn.disabled = true;
+  }
+
+  function hostAssignAndStart(){
+    const hostIsX = Math.random() < 0.5;
+    mySymbol = hostIsX ? 'X' : 'O';
+    send({type:'assign', symbol: hostIsX ? 'O' : 'X'});
+    resetGame();
+  }
+
+  // ---------- Messaging ----------
+  function send(obj){
+    if(!client || !client.connected) return;
+    obj.from = myId;
+    client.publish(topic, JSON.stringify(obj));
+  }
+
+  function onMessage(raw){
+    let data;
+    try { data = JSON.parse(raw); } catch(e){ return; }
+    if(!data || data.from === myId) return;
+    if(opponentId && data.from !== opponentId && data.type !== 'hello') return;
+
+    switch(data.type){
+      case 'hello':
+        if(isHost && !opponentId){
+          opponentId = data.from;
+          clearTimeout(peerWatchdog);
+          logNet('Соперник подключился');
+          onOpponentJoined();
+        }
+        break;
+      case 'welcome':
+        if(!isHost && !opponentId){
+          opponentId = data.from;
+          clearTimeout(peerWatchdog);
+          logNet('Соперник найден');
+          onOpponentJoined();
+        }
+        break;
+      case 'assign':
+        mySymbol = data.symbol;
+        resetGame();
+        break;
+      case 'move':
+        applyMove(data.index, data.symbol);
+        myTurn = true;
+        updateTurnStatus();
+        break;
+      case 'request_rematch':
+        if(isHost) hostAssignAndStart();
+        break;
+      case 'bye':
+        logNet('Соперник отключился');
+        onOpponentLeft();
+        break;
+    }
+  }
+
+  function onOpponentJoined(){
+    inviteBtn.textContent = '✓ Соперник в игре';
+    inviteBtn.classList.add('connected');
+    inviteBtn.disabled = true;
+    modalBackdrop.classList.remove('show');
+    rematchBtn.style.display = 'block';
+    scoreboard.style.display = 'block';
+    resetScore();
+    if(isHost){
+      send({type:'welcome'});
+      hostAssignAndStart();
+    }
+  }
+
+  function onOpponentLeft(){
+    opponentId = null;
+    mySymbol = null;
+    myTurn = false;
+    gameOver = false;
+
+    cells = Array(9).fill(null);
+    winlineSvg.innerHTML = '';
+    renderBoard();
+    board.classList.add('disabled');
+
+    resetScore();
+    scoreboard.style.display = 'none';
+    rematchBtn.style.display = 'none';
+    infoLine.textContent = '';
+
+    inviteBtn.classList.remove('connected');
+    if(isHost){
+      inviteBtn.disabled = false;
+      inviteBtn.textContent = '🔗 Пригласить друга';
+      setStatus('Соперник ушёл — позовите снова', 'waiting');
+    } else {
+      inviteBtn.textContent = '⏳ Ожидание соперника…';
+      setStatus('Соперник отключился', 'waiting');
+    }
+  }
+
+  // ---------- Connection ----------
+  function connect(){
+    if(brokerIndex >= BROKERS.length){
+      logNet('Не удалось подключиться ни к одному серверу');
+      setStatus('Нет связи с сервером', 'lose');
+      inviteBtn.textContent = '⚠ Нет связи';
+      return;
+    }
+    const url = BROKERS[brokerIndex];
+    logNet('Подключение к серверу #' + (brokerIndex+1));
+
+    try {
+      client = mqtt.connect(url, {
+        clientId: 'ttt_' + myId + '_' + Math.random().toString(16).slice(2,8),
+        keepalive: 30,
+        reconnectPeriod: 0,
+        connectTimeout: CONNECT_TIMEOUT,
+        clean: true,
+        will: { topic: topic, payload: JSON.stringify({type:'bye', from:myId}), qos:0, retain:false }
+      });
+    } catch(e){ brokerIndex++; connect(); return; }
+
+    connectTimer = setTimeout(() => {
+      logNet('Сервер #' + (brokerIndex+1) + ' не ответил, пробуем следующий');
+      try { client.end(true); } catch(e){}
+      brokerIndex++;
+      connect();
+    }, CONNECT_TIMEOUT);
+
+    client.on('connect', () => {
+      clearTimeout(connectTimer);
+      logNet('Сервер подключён');
+      client.subscribe(topic, {qos:0}, (err) => {
+        if(err){ logNet('Не удалось войти в комнату'); return; }
+        logNet('Комната: ' + roomCode);
+        onReady();
+      });
+    });
+
+    client.on('message', (t, payload) => onMessage(payload.toString()));
+    client.on('error', (err) => logNet('Ошибка сервера: ' + (err && err.message ? err.message : '?')));
+    client.on('close', () => { if(opponentId) logNet('Связь с сервером потеряна'); });
+  }
+
+  function onReady(){
+    if(isHost){
+      const url = location.origin + location.pathname + '?room=' + roomCode;
+      inviteLinkInput.value = url;
+      modalBackdrop.classList.add('show');
+      inviteBtn.textContent = '⏳ Ожидание соперника…';
+      setStatus('Ожидание соперника', 'waiting');
+    } else {
+      logNet('Ищем соперника в комнате');
+      send({type:'hello'});
+      let tries = 0;
+      const retry = setInterval(() => {
+        if(opponentId || tries++ > 8){ clearInterval(retry); return; }
+        send({type:'hello'});
+      }, 1500);
+      peerWatchdog = setTimeout(() => {
+        if(!opponentId){
+          setStatus('Соперник не в игре', 'lose');
+          inviteBtn.textContent = '⚠ Соперник не отвечает';
+        }
+      }, 15000);
+    }
+  }
+
+  // ---------- UI events ----------
+  inviteBtn.addEventListener('click', () => {
+    if(client){ modalBackdrop.classList.add('show'); return; }
+    isHost = true;
+    roomCode = Math.random().toString(36).slice(2, 8).toUpperCase();
+    topic = TOPIC_PREFIX + roomCode;
+    inviteBtn.disabled = true;
+    inviteBtn.textContent = '⏳ Создание комнаты…';
+    connect();
+  });
+
+  rematchBtn.addEventListener('click', () => {
+    if(!client || !opponentId) return;
+    rematchBtn.disabled = true;
+    if(isHost) hostAssignAndStart();
+    else send({type:'request_rematch'});
+  });
+
+  copyBtn.addEventListener('click', () => {
+    inviteLinkInput.select();
+    navigator.clipboard.writeText(inviteLinkInput.value).then(()=>{
+      copyBtn.textContent = 'Скопировано';
+      setTimeout(()=>copyBtn.textContent='Копировать', 1500);
+    });
+  });
+
+  closeModal.addEventListener('click', () => modalBackdrop.classList.remove('show'));
+
+  window.addEventListener('beforeunload', () => {
+    if(client && client.connected){
+      try { client.publish(topic, JSON.stringify({type:'bye', from:myId})); } catch(e){}
+    }
+  });
+
+  // ---------- Start ----------
+  const params = new URLSearchParams(location.search);
+  const joinRoom = params.get('room');
+  if(joinRoom){
+    isHost = false;
+    roomCode = joinRoom;
+    topic = TOPIC_PREFIX + roomCode;
+    inviteBtn.disabled = true;
+    inviteBtn.textContent = '⏳ Подключение…';
+    setStatus('Подключение', 'waiting');
+    connect();
+  }
+
+  renderBoard();
+})();
+</script>
+</body>
+</html>
