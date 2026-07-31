@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Крестики-Нолики</title>
-<script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+<script src="https://unpkg.com/mqtt@5.3.4/dist/mqtt.min.js"></script>
 <style>
   :root{
     --blue:#0b6bf2;
@@ -27,106 +27,32 @@
     justify-content:center;
     padding:32px 16px 60px;
   }
-  .wrap{
-    width:100%;
-    max-width:460px;
-  }
+  .wrap{width:100%; max-width:460px;}
   .invite-btn{
-    width:100%;
-    border:none;
-    border-radius:16px;
-    padding:18px 20px;
-    font-size:17px;
-    font-weight:700;
-    color:#fff;
-    background:var(--blue);
-    cursor:pointer;
-    display:flex;
-    align-items:center;
-    justify-content:center;
-    gap:10px;
-    box-shadow:0 6px 16px rgba(11,107,242,.25);
+    width:100%; border:none; border-radius:16px; padding:18px 20px;
+    font-size:17px; font-weight:700; color:#fff; background:var(--blue);
+    cursor:pointer; display:flex; align-items:center; justify-content:center;
+    gap:10px; box-shadow:0 6px 16px rgba(11,107,242,.25);
     transition:background .15s ease;
   }
   .invite-btn.connected{
-    background:var(--green);
-    box-shadow:0 6px 16px rgba(31,177,90,.25);
-    cursor:default;
+    background:var(--green); box-shadow:0 6px 16px rgba(31,177,90,.25); cursor:default;
   }
   .invite-btn:disabled{cursor:default;}
 
-  .title-row{
-    display:flex;
-    align-items:baseline;
-    gap:10px;
-    margin:26px 4px 18px;
-  }
+  .title-row{display:flex; align-items:baseline; gap:10px; margin:26px 4px 18px;}
   .title-row .icons{display:flex; gap:4px; font-size:30px; line-height:1;}
-  .title-row .x{color:var(--red); font-weight:900;}
-  .title-row .o{color:var(--red); font-weight:900;}
-  .title-row h1{
-    font-size:28px;
-    margin:0;
-    font-weight:800;
-    color:var(--text);
-    flex:1;
-  }
+  .title-row .x, .title-row .o{color:var(--red); font-weight:900;}
+  .title-row h1{font-size:28px; margin:0; font-weight:800; color:var(--text); flex:1;}
   .title-row .ver{font-size:13px; color:var(--muted); font-weight:600;}
 
   .card{
-    background:var(--card);
-    border-radius:22px;
-    padding:26px 24px 30px;
+    background:var(--card); border-radius:22px; padding:26px 24px 30px;
     box-shadow:0 10px 30px rgba(20,24,40,.06);
   }
-  .scoreboard{
-    display:none;
-    align-items:stretch;
-    justify-content:space-between;
-    background:var(--card);
-    border:1px solid var(--cell-border);
-    border-radius:16px;
-    padding:16px 8px;
-    margin:18px 0 0;
-    box-shadow:0 6px 18px rgba(20,24,40,.05);
-  }
-  .scoreboard .item{
-    flex:1;
-    text-align:center;
-    position:relative;
-  }
-  .scoreboard .item + .item::before{
-    content:'';
-    position:absolute;
-    left:0; top:4px; bottom:4px;
-    width:1px;
-    background:var(--cell-border);
-  }
-  .scoreboard .num{
-    display:block;
-    font-size:20px;
-    font-weight:800;
-    color:var(--text);
-  }
-  .scoreboard .item.mine .num{color:var(--blue);}
-  .scoreboard .item.opp .num{color:var(--red);}
-  .scoreboard .label{
-    display:block;
-    font-size:11px;
-    color:var(--muted);
-    font-weight:600;
-    text-transform:uppercase;
-    letter-spacing:.02em;
-    margin-top:2px;
-  }
-
   .status{
-    text-align:center;
-    font-weight:700;
-    font-size:17px;
-    color:var(--blue);
-    margin:0 0 20px;
-    min-height:24px;
+    text-align:center; font-weight:700; font-size:17px; color:var(--blue);
+    margin:0 0 20px; min-height:24px;
   }
   .status.waiting{color:var(--muted); font-weight:600;}
   .status.mine{color:var(--blue);}
@@ -135,141 +61,84 @@
   .status.lose{color:var(--red);}
   .status.draw{color:var(--muted);}
 
-  .board{
-    display:grid;
-    grid-template-columns:repeat(3,1fr);
-    gap:14px;
-  }
+  .board{display:grid; grid-template-columns:repeat(3,1fr); gap:14px;}
   .cell{
-    aspect-ratio:1/1;
-    background:var(--cell);
-    border:1px solid var(--cell-border);
-    border-radius:16px;
-    display:flex;
-    align-items:center;
-    justify-content:center;
-    font-size:44px;
-    font-weight:800;
-    cursor:pointer;
-    user-select:none;
+    aspect-ratio:1/1; background:var(--cell); border:1px solid var(--cell-border);
+    border-radius:16px; display:flex; align-items:center; justify-content:center;
+    font-size:44px; font-weight:800; cursor:pointer; user-select:none;
     transition:background .1s ease;
   }
   .cell:hover:not(.filled){background:#ececf1;}
   .cell.filled{cursor:default;}
-  .cell.x{color:var(--red);}
-  .cell.o{color:var(--red);}
+  .cell.x, .cell.o{color:var(--red);}
   .cell.win{background:#e4f7ea;}
   .board.disabled .cell:hover{background:var(--cell);}
 
   .rematch-btn{
-    display:none;
-    width:100%;
-    margin-top:18px;
-    border:none;
-    border-radius:14px;
-    padding:14px 16px;
-    font-size:15px;
-    font-weight:700;
-    color:var(--blue);
-    background:#eaf2fe;
-    cursor:pointer;
-    align-items:center;
-    justify-content:center;
-    gap:8px;
-    transition:background .15s ease, opacity .15s ease;
+    display:none; width:100%; margin-top:18px; border:none; border-radius:14px;
+    padding:14px 16px; font-size:15px; font-weight:700; color:var(--blue);
+    background:#eaf2fe; cursor:pointer; align-items:center; justify-content:center;
+    gap:8px; transition:background .15s ease, opacity .15s ease;
   }
   .rematch-btn:hover{background:#dcebfd;}
   .rematch-btn:disabled{opacity:.5; cursor:default;}
 
-  .info{
-    margin-top:16px;
-    text-align:center;
-    font-size:13px;
-    color:var(--muted);
-    line-height:1.5;
-  }
+  .info{margin-top:16px; text-align:center; font-size:13px; color:var(--muted); line-height:1.5;}
 
   .net-debug{
-    display:none;
-    margin-top:14px;
-    background:#f7f8fa;
-    border:1px solid var(--cell-border);
-    border-radius:12px;
-    padding:10px 12px;
+    display:none; margin-top:14px; background:#f7f8fa; border:1px solid var(--cell-border);
+    border-radius:12px; padding:10px 12px;
     font-family:ui-monospace,SFMono-Regular,Consolas,monospace;
-    font-size:11px;
-    line-height:1.6;
-    color:#5b6270;
-    max-height:150px;
-    overflow-y:auto;
-    text-align:left;
+    font-size:11px; line-height:1.6; color:#5b6270;
+    max-height:150px; overflow-y:auto; text-align:left;
   }
   .net-debug.show{display:block;}
   .net-debug .warn{color:var(--red); font-weight:700;}
   .net-debug .ok{color:var(--green); font-weight:700;}
 
+  .scoreboard{
+    display:none; align-items:stretch; justify-content:space-between;
+    background:var(--card); border:1px solid var(--cell-border); border-radius:16px;
+    padding:16px 8px; margin:18px 0 0; box-shadow:0 6px 18px rgba(20,24,40,.05);
+  }
+  .scoreboard .item{flex:1; text-align:center; position:relative;}
+  .scoreboard .item + .item::before{
+    content:''; position:absolute; left:0; top:4px; bottom:4px; width:1px; background:var(--cell-border);
+  }
+  .scoreboard .num{display:block; font-size:20px; font-weight:800; color:var(--text);}
+  .scoreboard .item.mine .num{color:var(--blue);}
+  .scoreboard .item.opp .num{color:var(--red);}
+  .scoreboard .label{
+    display:block; font-size:11px; color:var(--muted); font-weight:600;
+    text-transform:uppercase; letter-spacing:.02em; margin-top:2px;
+  }
+
   .modal-backdrop{
-    position:fixed; inset:0;
-    background:rgba(20,24,40,.45);
-    display:none;
-    align-items:center;
-    justify-content:center;
-    padding:20px;
-    z-index:10;
+    position:fixed; inset:0; background:rgba(20,24,40,.45);
+    display:none; align-items:center; justify-content:center; padding:20px; z-index:10;
   }
   .modal-backdrop.show{display:flex;}
   .modal{
-    background:#fff;
-    border-radius:20px;
-    padding:24px;
-    width:100%;
-    max-width:380px;
+    background:#fff; border-radius:20px; padding:24px; width:100%; max-width:380px;
     box-shadow:0 20px 50px rgba(0,0,0,.2);
   }
   .modal h2{margin:0 0 6px; font-size:19px;}
   .modal p{margin:0 0 16px; font-size:14px; color:var(--muted); line-height:1.5;}
-  .link-row{
-    display:flex; gap:8px; margin-bottom:14px;
-  }
+  .link-row{display:flex; gap:8px; margin-bottom:14px;}
   .link-row input{
-    flex:1;
-    border:1px solid var(--cell-border);
-    border-radius:10px;
-    padding:10px 12px;
-    font-size:13px;
-    color:var(--text);
-    background:var(--cell);
+    flex:1; border:1px solid var(--cell-border); border-radius:10px;
+    padding:10px 12px; font-size:13px; color:var(--text); background:var(--cell);
   }
   .link-row button{
-    border:none;
-    border-radius:10px;
-    background:var(--blue);
-    color:#fff;
-    font-weight:700;
-    font-size:13px;
-    padding:0 16px;
-    cursor:pointer;
+    border:none; border-radius:10px; background:var(--blue); color:#fff;
+    font-weight:700; font-size:13px; padding:0 16px; cursor:pointer;
   }
-  .waiting-spinner{
-    display:flex; align-items:center; gap:10px;
-    font-size:13px; color:var(--muted); margin-bottom:14px;
-  }
-  .dot{
-    width:8px; height:8px; border-radius:50%;
-    background:var(--blue);
-    animation:pulse 1s infinite ease-in-out;
-  }
+  .waiting-spinner{display:flex; align-items:center; gap:10px; font-size:13px; color:var(--muted); margin-bottom:14px;}
+  .dot{width:8px; height:8px; border-radius:50%; background:var(--blue); animation:pulse 1s infinite ease-in-out;}
   @keyframes pulse{0%,100%{opacity:.3;}50%{opacity:1;}}
   .modal .close{
-    width:100%;
-    border:none;
-    background:var(--cell);
-    color:var(--text);
-    font-weight:700;
-    border-radius:10px;
-    padding:12px;
-    cursor:pointer;
-    font-size:14px;
+    width:100%; border:none; background:var(--cell); color:var(--text);
+    font-weight:700; border-radius:10px; padding:12px; cursor:pointer; font-size:14px;
   }
 </style>
 </head>
@@ -280,7 +149,7 @@
   <div class="title-row">
     <div class="icons"><span class="x">✕</span><span class="o">◯</span></div>
     <h1>Крестики-Нолики</h1>
-    <span class="ver">v3.4</span>
+    <span class="ver">v4.0</span>
   </div>
 
   <div class="card">
@@ -313,6 +182,7 @@
 
 <script>
 (function(){
+  // ---------- DOM ----------
   const board = document.getElementById('board');
   const statusEl = document.getElementById('status');
   const inviteBtn = document.getElementById('inviteBtn');
@@ -322,38 +192,42 @@
   const closeModal = document.getElementById('closeModal');
   const infoLine = document.getElementById('infoLine');
   const rematchBtn = document.getElementById('rematchBtn');
-
-  // STUN alone often fails to establish a direct connection when either side
-  // is behind a strict NAT (corporate networks, some mobile carriers, VPNs).
-  // Adding a public TURN relay as fallback fixes most "stuck on Подключение…" cases.
-  const PEER_ICE_CONFIG = {
-    config: {
-      iceServers: [
-        { urls: 'stun:stun.l.google.com:19302' },
-        { urls: 'turn:openrelay.metered.ca:80', username: 'openrelayproject', credential: 'openrelayproject' },
-        { urls: 'turn:openrelay.metered.ca:443', username: 'openrelayproject', credential: 'openrelayproject' },
-        { urls: 'turn:openrelay.metered.ca:443?transport=tcp', username: 'openrelayproject', credential: 'openrelayproject' }
-      ]
-    }
-  };
-
-  let cells = Array(9).fill(null);
-  let peer = null;
-  let conn = null;
-  let mySymbol = null;   // 'X' or 'O', decided randomly each round
-  let myTurn = false;
-  let gameOver = false;
-  let isHost = false;    // connection role (fixed) — NOT the same as who plays X
-  let score = {mine:0, opp:0, draws:0};
-
+  const netDebug = document.getElementById('netDebug');
   const scoreboard = document.getElementById('scoreboard');
   const scoreMineEl = document.getElementById('scoreMine');
   const scoreOppEl = document.getElementById('scoreOpp');
   const scoreDrawsEl = document.getElementById('scoreDraws');
-  const netDebug = document.getElementById('netDebug');
 
-  let connectWatchdog = null;
+  // ---------- Network config ----------
+  // Публичные MQTT-брокеры поверх защищённого веб-сокета (порт 443/8084 = обычный https-трафик).
+  // Ходы летят через брокер, поэтому NAT/брандмауэр значения не имеют.
+  // Список с запасными вариантами: если первый не отвечает, пробуем следующий.
+  const BROKERS = [
+    'wss://broker.emqx.io:8084/mqtt',
+    'wss://broker.hivemq.com:8884/mqtt',
+    'wss://test.mosquitto.org:8081/mqtt'
+  ];
+  const TOPIC_PREFIX = 'ttt-krass/';
+  const CONNECT_TIMEOUT = 8000;
 
+  // ---------- State ----------
+  let cells = Array(9).fill(null);
+  let mySymbol = null;
+  let myTurn = false;
+  let gameOver = false;
+  let isHost = false;
+  let score = {mine:0, opp:0, draws:0};
+
+  let client = null;
+  let topic = null;
+  let roomCode = null;
+  const myId = Math.random().toString(36).slice(2, 10);
+  let opponentId = null;
+  let brokerIndex = 0;
+  let connectTimer = null;
+  let peerWatchdog = null;
+
+  // ---------- Logging ----------
   function logNet(msg, cls){
     netDebug.classList.add('show');
     const line = document.createElement('div');
@@ -365,71 +239,7 @@
     netDebug.scrollTop = netDebug.scrollHeight;
   }
 
-  function armConnectWatchdog(){
-    clearConnectWatchdog();
-    connectWatchdog = setTimeout(() => {
-      logNet('Соединение не устанавливается уже 12 секунд.', 'warn');
-      logNet('Похоже, брандмауэр/VPN/корпоративная сеть блокирует WebRTC-трафик.', 'warn');
-      logNet('Попробуйте: 1) отключить VPN  2) другую сеть (мобильный интернет)  3) другой браузер.', 'warn');
-    }, 12000);
-  }
-
-  function clearConnectWatchdog(){
-    if(connectWatchdog){ clearTimeout(connectWatchdog); connectWatchdog = null; }
-  }
-
-  function attachIceMonitor(c){
-    const tryAttach = (attempts) => {
-      if(c.peerConnection){
-        logNet('WebRTC-канал создан, начинаем поиск маршрута…');
-        c.peerConnection.oniceconnectionstatechange = () => {
-          const state = c.peerConnection.iceConnectionState;
-          if(state === 'connected' || state === 'completed'){
-            logNet('Маршрут найден, соединение установлено ✓', 'ok');
-          } else if(state === 'failed'){
-            logNet('Маршрут не найден (ICE: failed) — сеть блокирует прямое соединение.', 'warn');
-          } else if(state === 'disconnected'){
-            logNet('Соединение прервано (ICE: disconnected).', 'warn');
-          } else {
-            logNet('ICE-состояние: ' + state);
-          }
-        };
-        c.peerConnection.onicegatheringstatechange = () => {
-          logNet('Сбор сетевых маршрутов: ' + c.peerConnection.iceGatheringState);
-        };
-        const seenTypes = new Set();
-        c.peerConnection.onicecandidate = (e) => {
-          if(e.candidate && e.candidate.candidate){
-            const type = e.candidate.type || (e.candidate.candidate.match(/typ (\w+)/) || [])[1];
-            if(type && !seenTypes.has(type)){
-              seenTypes.add(type);
-              const label = type === 'relay' ? 'relay (TURN)' : type === 'srflx' ? 'srflx (STUN)' : type === 'host' ? 'host (локальный)' : type;
-              logNet('Найден маршрут типа: ' + label);
-            }
-          }
-        };
-        c.peerConnection.onicecandidateerror = (e) => {
-          logNet('Ошибка сбора маршрута: ' + (e.errorCode||'?') + ' ' + (e.errorText||'') + (e.url ? ' [' + e.url + ']' : ''), 'warn');
-        };
-      } else if(attempts < 20){
-        setTimeout(() => tryAttach(attempts+1), 250);
-      }
-    };
-    tryAttach(0);
-  }
-
-  function resetScore(){
-    score = {mine:0, opp:0, draws:0};
-    updateScoreboard();
-  }
-
-  function updateScoreboard(){
-    scoreMineEl.textContent = score.mine;
-    scoreOppEl.textContent = score.opp;
-    scoreDrawsEl.textContent = score.draws;
-  }
-
-  // build board cells
+  // ---------- Board ----------
   for(let i=0;i<9;i++){
     const c = document.createElement('div');
     c.className = 'cell';
@@ -444,10 +254,7 @@
     el.textContent = v === 'X' ? '✕' : v === 'O' ? '◯' : '';
     el.className = 'cell' + (v ? ' filled ' + v.toLowerCase() : '');
   }
-
-  function renderBoard(){
-    for(let i=0;i<9;i++) renderCell(i);
-  }
+  function renderBoard(){ for(let i=0;i<9;i++) renderCell(i); }
 
   function setStatus(text, cls){
     statusEl.textContent = text;
@@ -469,10 +276,17 @@
     return null;
   }
 
+  function updateScoreboard(){
+    scoreMineEl.textContent = score.mine;
+    scoreOppEl.textContent = score.opp;
+    scoreDrawsEl.textContent = score.draws;
+  }
+  function resetScore(){ score = {mine:0, opp:0, draws:0}; updateScoreboard(); }
+
   function onCellClick(i){
-    if(gameOver || !myTurn || cells[i] || !conn) return;
+    if(gameOver || !myTurn || cells[i] || !client) return;
     applyMove(i, mySymbol);
-    conn.send({type:'move', index:i, symbol:mySymbol});
+    send({type:'move', index:i, symbol:mySymbol});
     myTurn = false;
     updateTurnStatus();
   }
@@ -523,134 +337,198 @@
     rematchBtn.disabled = true;
   }
 
-  // Host is authoritative for randomly assigning who plays X each round
+  // Хост случайно раздаёт X/O каждую партию — сам может оказаться и тем, и другим.
   function hostAssignAndStart(){
     const hostIsX = Math.random() < 0.5;
     mySymbol = hostIsX ? 'X' : 'O';
-    conn.send({type:'assign', symbol: hostIsX ? 'O' : 'X'});
+    send({type:'assign', symbol: hostIsX ? 'O' : 'X'});
     resetGame();
   }
 
-  function setupConnectionHandlers(){
-    conn.on('data', data => {
-      if(data.type === 'move'){
+  // ---------- Messaging ----------
+  function send(obj){
+    if(!client || !client.connected) return;
+    obj.from = myId;
+    client.publish(topic, JSON.stringify(obj));
+  }
+
+  function onMessage(raw){
+    let data;
+    try { data = JSON.parse(raw); } catch(e){ return; }
+    if(!data || data.from === myId) return;           // свои же сообщения игнорируем
+    if(opponentId && data.from !== opponentId && data.type !== 'hello') return;
+
+    switch(data.type){
+      case 'hello':
+        // Гость постучался. Отвечает только хост.
+        if(isHost && !opponentId){
+          opponentId = data.from;
+          clearTimeout(peerWatchdog);
+          logNet('Соперник подключился ✓', 'ok');
+          onOpponentJoined();
+        }
+        break;
+
+      case 'welcome':
+        // Хост подтвердил гостю, что видит его.
+        if(!isHost && !opponentId){
+          opponentId = data.from;
+          clearTimeout(peerWatchdog);
+          logNet('Соперник найден ✓', 'ok');
+          onOpponentJoined();
+        }
+        break;
+
+      case 'assign':
+        mySymbol = data.symbol;
+        resetGame();
+        break;
+
+      case 'move':
         applyMove(data.index, data.symbol);
         myTurn = true;
         updateTurnStatus();
-      } else if(data.type === 'assign'){
-        mySymbol = data.symbol;
-        resetGame();
-      } else if(data.type === 'request_rematch'){
-        hostAssignAndStart();
-      }
-    });
-    conn.on('close', () => {
-      clearConnectWatchdog();
-      logNet('Соединение закрыто.', 'warn');
-      setStatus('Соперник отключился', 'lose');
-      board.classList.add('disabled');
-      rematchBtn.style.display = 'none';
-      scoreboard.style.display = 'none';
-      inviteBtn.textContent = '🔗 Пригласить друга';
-      inviteBtn.classList.remove('connected');
-      inviteBtn.disabled = false;
-      inviteBtn.style.display = 'flex';
-    });
+        break;
+
+      case 'request_rematch':
+        if(isHost) hostAssignAndStart();
+        break;
+
+      case 'bye':
+        logNet('Соперник отключился.', 'warn');
+        onOpponentLeft();
+        break;
+    }
   }
 
-  function onGuestConnected(){
-    clearConnectWatchdog();
-    logNet('Подключено к сопернику ✓', 'ok');
-    inviteBtn.textContent = '✓ Подключено к сопернику';
-    inviteBtn.classList.add('connected');
-    setStatus('Подключено! Ждём раздачу ролей…', 'waiting');
-    rematchBtn.style.display = 'flex';
-    scoreboard.style.display = 'flex';
-    resetScore();
-  }
-
-  function onHostConnected(){
-    clearConnectWatchdog();
-    logNet('Соперник подключился ✓', 'ok');
+  function onOpponentJoined(){
     inviteBtn.textContent = '✓ Соперник в игре';
     inviteBtn.classList.add('connected');
+    inviteBtn.disabled = true;
     modalBackdrop.classList.remove('show');
     rematchBtn.style.display = 'flex';
     scoreboard.style.display = 'flex';
     resetScore();
-    hostAssignAndStart();
+    if(isHost){
+      send({type:'welcome'});
+      hostAssignAndStart();
+    }
   }
 
-  // ---- Host flow ----
-  function startHost(){
-    inviteBtn.disabled = true;
-    logNet('Подключаемся к сигнальному серверу…');
-    peer = new Peer(PEER_ICE_CONFIG);
-    peer.on('open', id => {
-      logNet('Сигнальный сервер: подключено, ID получен.', 'ok');
-      const url = location.origin + location.pathname + '?join=' + id;
-      inviteLinkInput.value = url;
-      modalBackdrop.classList.add('show');
-    });
-    peer.on('connection', c => {
-      logNet('Соперник начал подключаться…');
-      conn = c;
-      isHost = true;
-      setupConnectionHandlers();
-      attachIceMonitor(conn);
-      armConnectWatchdog();
-      conn.on('open', onHostConnected);
-    });
-    peer.on('disconnected', () => logNet('Отключён от сигнального сервера.', 'warn'));
-    peer.on('error', err => {
-      logNet('Ошибка: ' + err.type, 'warn');
-      setStatus('Ошибка соединения: ' + err.type, 'lose');
-      inviteBtn.disabled = false;
-    });
+  function onOpponentLeft(){
+    opponentId = null;
+    gameOver = true;
+    setStatus('Соперник отключился', 'lose');
+    board.classList.add('disabled');
+    rematchBtn.style.display = 'none';
+    inviteBtn.textContent = '⏳ Ожидание соперника…';
+    inviteBtn.classList.remove('connected');
   }
 
-  // ---- Guest flow ----
-  function startGuest(hostId){
-    inviteBtn.disabled = true;
-    inviteBtn.textContent = '⏳ Подключение…';
-    setStatus('Подключение к сопернику…', 'waiting');
-    logNet('Подключаемся к сигнальному серверу…');
-    peer = new Peer(PEER_ICE_CONFIG);
-    peer.on('open', () => {
-      logNet('Сигнальный сервер: подключено. Ищем соперника…', 'ok');
-      conn = peer.connect(hostId, {reliable:true});
-      isHost = false;
-      setupConnectionHandlers();
-      attachIceMonitor(conn);
-      armConnectWatchdog();
-      conn.on('open', onGuestConnected);
-      conn.on('error', () => {
-        logNet('Ошибка соединения с соперником.', 'warn');
-        inviteBtn.textContent = '⚠ Не удалось подключиться';
-        setStatus('Не удалось подключиться', 'lose');
+  // ---------- Connection ----------
+  function connect(){
+    if(brokerIndex >= BROKERS.length){
+      logNet('Не удалось подключиться ни к одному серверу.', 'warn');
+      setStatus('Нет связи с сервером', 'lose');
+      inviteBtn.textContent = '⚠ Нет связи';
+      return;
+    }
+    const url = BROKERS[brokerIndex];
+    logNet('Подключение к серверу #' + (brokerIndex+1) + '…');
+
+    try {
+      client = mqtt.connect(url, {
+        clientId: 'ttt_' + myId + '_' + Math.random().toString(16).slice(2,8),
+        keepalive: 30,
+        reconnectPeriod: 0,
+        connectTimeout: CONNECT_TIMEOUT,
+        clean: true,
+        will: {
+          topic: topic,
+          payload: JSON.stringify({type:'bye', from:myId}),
+          qos: 0,
+          retain: false
+        }
+      });
+    } catch(e){
+      brokerIndex++;
+      connect();
+      return;
+    }
+
+    connectTimer = setTimeout(() => {
+      logNet('Сервер #' + (brokerIndex+1) + ' не ответил, пробуем следующий…', 'warn');
+      try { client.end(true); } catch(e){}
+      brokerIndex++;
+      connect();
+    }, CONNECT_TIMEOUT);
+
+    client.on('connect', () => {
+      clearTimeout(connectTimer);
+      logNet('Сервер подключён ✓', 'ok');
+      client.subscribe(topic, {qos:0}, (err) => {
+        if(err){
+          logNet('Не удалось войти в комнату.', 'warn');
+          return;
+        }
+        logNet('Комната: ' + roomCode);
+        onReady();
       });
     });
-    peer.on('disconnected', () => logNet('Отключён от сигнального сервера.', 'warn'));
-    peer.on('error', err => {
-      logNet('Ошибка: ' + err.type, 'warn');
-      inviteBtn.textContent = '⚠ Ошибка соединения';
-      setStatus('Ошибка соединения: ' + err.type, 'lose');
+
+    client.on('message', (t, payload) => onMessage(payload.toString()));
+
+    client.on('error', (err) => {
+      logNet('Ошибка сервера: ' + (err && err.message ? err.message : '?'), 'warn');
+    });
+
+    client.on('close', () => {
+      if(opponentId) logNet('Связь с сервером потеряна.', 'warn');
     });
   }
 
+  function onReady(){
+    if(isHost){
+      const url = location.origin + location.pathname + '?room=' + roomCode;
+      inviteLinkInput.value = url;
+      modalBackdrop.classList.add('show');
+      inviteBtn.textContent = '⏳ Ожидание соперника…';
+      setStatus('Ожидание соперника…', 'waiting');
+    } else {
+      logNet('Ищем соперника в комнате…');
+      send({type:'hello'});
+      // повторяем «привет» — вдруг хост подключился на секунду позже
+      let tries = 0;
+      const retry = setInterval(() => {
+        if(opponentId || tries++ > 8){ clearInterval(retry); return; }
+        send({type:'hello'});
+      }, 1500);
+      peerWatchdog = setTimeout(() => {
+        if(!opponentId){
+          logNet('Соперник не отвечает. Он открыл игру у себя?', 'warn');
+          setStatus('Соперник не в игре', 'lose');
+          inviteBtn.textContent = '⚠ Соперник не отвечает';
+        }
+      }, 15000);
+    }
+  }
+
+  // ---------- UI events ----------
   inviteBtn.addEventListener('click', () => {
-    if(inviteBtn.classList.contains('connected')) return;
-    startHost();
+    if(client) { modalBackdrop.classList.add('show'); return; }
+    isHost = true;
+    roomCode = Math.random().toString(36).slice(2, 8).toUpperCase();
+    topic = TOPIC_PREFIX + roomCode;
+    inviteBtn.disabled = true;
+    inviteBtn.textContent = '⏳ Создание комнаты…';
+    connect();
   });
 
   rematchBtn.addEventListener('click', () => {
-    if(!conn || !conn.open) return;
+    if(!client || !opponentId) return;
     rematchBtn.disabled = true;
-    if(isHost){
-      hostAssignAndStart();
-    } else {
-      conn.send({type:'request_rematch'});
-    }
+    if(isHost) hostAssignAndStart();
+    else send({type:'request_rematch'});
   });
 
   copyBtn.addEventListener('click', () => {
@@ -661,15 +539,25 @@
     });
   });
 
-  closeModal.addEventListener('click', () => {
-    modalBackdrop.classList.remove('show');
+  closeModal.addEventListener('click', () => modalBackdrop.classList.remove('show'));
+
+  window.addEventListener('beforeunload', () => {
+    if(client && client.connected){
+      try { client.publish(topic, JSON.stringify({type:'bye', from:myId})); } catch(e){}
+    }
   });
 
-  // check URL for join code
+  // ---------- Start ----------
   const params = new URLSearchParams(location.search);
-  const joinId = params.get('join');
-  if(joinId){
-    startGuest(joinId);
+  const joinRoom = params.get('room');
+  if(joinRoom){
+    isHost = false;
+    roomCode = joinRoom;
+    topic = TOPIC_PREFIX + roomCode;
+    inviteBtn.disabled = true;
+    inviteBtn.textContent = '⏳ Подключение…';
+    setStatus('Подключение…', 'waiting');
+    connect();
   }
 
   renderBoard();
