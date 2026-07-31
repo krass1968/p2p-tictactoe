@@ -261,7 +261,7 @@
   <div class="title-row">
     <div class="icons"><span class="x">✕</span><span class="o">◯</span></div>
     <h1>Крестики-Нолики</h1>
-    <span class="ver">v3.1</span>
+    <span class="ver">v2.4</span>
   </div>
 
   <div class="card">
@@ -302,6 +302,20 @@
   const closeModal = document.getElementById('closeModal');
   const infoLine = document.getElementById('infoLine');
   const rematchBtn = document.getElementById('rematchBtn');
+
+  // STUN alone often fails to establish a direct connection when either side
+  // is behind a strict NAT (corporate networks, some mobile carriers, VPNs).
+  // Adding a public TURN relay as fallback fixes most "stuck on Подключение…" cases.
+  const PEER_ICE_CONFIG = {
+    config: {
+      iceServers: [
+        { urls: 'stun:stun.l.google.com:19302' },
+        { urls: 'turn:openrelay.metered.ca:80', username: 'openrelayproject', credential: 'openrelayproject' },
+        { urls: 'turn:openrelay.metered.ca:443', username: 'openrelayproject', credential: 'openrelayproject' },
+        { urls: 'turn:openrelay.metered.ca:443?transport=tcp', username: 'openrelayproject', credential: 'openrelayproject' }
+      ]
+    }
+  };
 
   let cells = Array(9).fill(null);
   let peer = null;
@@ -477,7 +491,7 @@
   // ---- Host flow ----
   function startHost(){
     inviteBtn.disabled = true;
-    peer = new Peer();
+    peer = new Peer(PEER_ICE_CONFIG);
     peer.on('open', id => {
       const url = location.origin + location.pathname + '?join=' + id;
       inviteLinkInput.value = url;
@@ -500,7 +514,7 @@
     inviteBtn.disabled = true;
     inviteBtn.textContent = '⏳ Подключение…';
     setStatus('Подключение к сопернику…', 'waiting');
-    peer = new Peer();
+    peer = new Peer(PEER_ICE_CONFIG);
     peer.on('open', () => {
       conn = peer.connect(hostId, {reliable:true});
       isHost = false;
