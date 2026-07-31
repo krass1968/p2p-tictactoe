@@ -189,6 +189,25 @@
     line-height:1.5;
   }
 
+  .net-debug{
+    display:none;
+    margin-top:14px;
+    background:#f7f8fa;
+    border:1px solid var(--cell-border);
+    border-radius:12px;
+    padding:10px 12px;
+    font-family:ui-monospace,SFMono-Regular,Consolas,monospace;
+    font-size:11px;
+    line-height:1.6;
+    color:#5b6270;
+    max-height:150px;
+    overflow-y:auto;
+    text-align:left;
+  }
+  .net-debug.show{display:block;}
+  .net-debug .warn{color:var(--red); font-weight:700;}
+  .net-debug .ok{color:var(--green); font-weight:700;}
+
   .modal-backdrop{
     position:fixed; inset:0;
     background:rgba(20,24,40,.45);
@@ -261,7 +280,7 @@
   <div class="title-row">
     <div class="icons"><span class="x">✕</span><span class="o">◯</span></div>
     <h1>Крестики-Нолики</h1>
-    <span class="ver">v2.4</span>
+    <span class="ver">v3.3</span>
   </div>
 
   <div class="card">
@@ -269,6 +288,7 @@
     <div id="board" class="board disabled"></div>
     <button id="rematchBtn" class="rematch-btn">🔄 Новая игра</button>
     <div class="info" id="infoLine"></div>
+    <div class="net-debug" id="netDebug"></div>
   </div>
 
   <div class="scoreboard" id="scoreboard">
@@ -330,6 +350,59 @@
   const scoreMineEl = document.getElementById('scoreMine');
   const scoreOppEl = document.getElementById('scoreOpp');
   const scoreDrawsEl = document.getElementById('scoreDraws');
+  const netDebug = document.getElementById('netDebug');
+
+  let connectWatchdog = null;
+
+  function logNet(msg, cls){
+    netDebug.classList.add('show');
+    const line = document.createElement('div');
+    if(cls) line.className = cls;
+    const t = new Date().toLocaleTimeString('ru-RU', {hour:'2-digit', minute:'2-digit', second:'2-digit'});
+    line.textContent = '[' + t + '] ' + msg;
+    netDebug.appendChild(line);
+    while(netDebug.children.length > 10) netDebug.removeChild(netDebug.firstChild);
+    netDebug.scrollTop = netDebug.scrollHeight;
+  }
+
+  function armConnectWatchdog(){
+    clearConnectWatchdog();
+    connectWatchdog = setTimeout(() => {
+      logNet('Соединение не устанавливается уже 12 секунд.', 'warn');
+      logNet('Похоже, брандмауэр/VPN/корпоративная сеть блокирует WebRTC-трафик.', 'warn');
+      logNet('Попробуйте: 1) отключить VPN  2) другую сеть (мобильный интернет)  3) другой браузер.', 'warn');
+    }, 12000);
+  }
+
+  function clearConnectWatchdog(){
+    if(connectWatchdog){ clearTimeout(connectWatchdog); connectWatchdog = null; }
+  }
+
+  function attachIceMonitor(c){
+    const tryAttach = (attempts) => {
+      if(c.peerConnection){
+        logNet('WebRTC-канал создан, начинаем поиск маршрута…');
+        c.peerConnection.oniceconnectionstatechange = () => {
+          const state = c.peerConnection.iceConnectionState;
+          if(state === 'connected' || state === 'completed'){
+            logNet('Маршрут найден, соединение установлено ✓', 'ok');
+          } else if(state === 'failed'){
+            logNet('Маршрут не найден (ICE: failed) — сеть блокирует прямое соединение.', 'warn');
+          } else if(state === 'disconnected'){
+            logNet('Соединение прервано (ICE: disconnected).', 'warn');
+          } else {
+            logNet('ICE-состояние: ' + state);
+          }
+        };
+        c.peerConnection.onicegatheringstatechange = () => {
+          logNet('Сбор сетевых маршрутов: ' + c.peerConnection.iceGatheringState);
+        };
+      } else if(attempts < 20){
+        setTimeout(() => tryAttach(attempts+1), 250);
+      }
+    };
+    tryAttach(0);
+  }
 
   function resetScore(){
     score = {mine:0, opp:0, draws:0};
@@ -458,6 +531,8 @@
       }
     });
     conn.on('close', () => {
+      clearConnectWatchdog();
+      logNet('Соединение закрыто.', 'warn');
       setStatus('Соперник отключился', 'lose');
       board.classList.add('disabled');
       rematchBtn.style.display = 'none';
@@ -470,6 +545,8 @@
   }
 
   function onGuestConnected(){
+    clearConnectWatchdog();
+    logNet('Подключено к сопернику ✓', 'ok');
     inviteBtn.textContent = '✓ Подключено к сопернику';
     inviteBtn.classList.add('connected');
     setStatus('Подключено! Ждём раздачу ролей…', 'waiting');
@@ -479,6 +556,8 @@
   }
 
   function onHostConnected(){
+    clearConnectWatchdog();
+    logNet('Соперник подключился ✓', 'ok');
     inviteBtn.textContent = '✓ Соперник в игре';
     inviteBtn.classList.add('connected');
     modalBackdrop.classList.remove('show');
@@ -491,19 +570,26 @@
   // ---- Host flow ----
   function startHost(){
     inviteBtn.disabled = true;
+    logNet('Подключаемся к сигнальному серверу…');
     peer = new Peer(PEER_ICE_CONFIG);
     peer.on('open', id => {
+      logNet('Сигнальный сервер: подключено, ID получен.', 'ok');
       const url = location.origin + location.pathname + '?join=' + id;
       inviteLinkInput.value = url;
       modalBackdrop.classList.add('show');
     });
     peer.on('connection', c => {
+      logNet('Соперник начал подключаться…');
       conn = c;
       isHost = true;
       setupConnectionHandlers();
+      attachIceMonitor(conn);
+      armConnectWatchdog();
       conn.on('open', onHostConnected);
     });
+    peer.on('disconnected', () => logNet('Отключён от сигнального сервера.', 'warn'));
     peer.on('error', err => {
+      logNet('Ошибка: ' + err.type, 'warn');
       setStatus('Ошибка соединения: ' + err.type, 'lose');
       inviteBtn.disabled = false;
     });
@@ -514,18 +600,25 @@
     inviteBtn.disabled = true;
     inviteBtn.textContent = '⏳ Подключение…';
     setStatus('Подключение к сопернику…', 'waiting');
+    logNet('Подключаемся к сигнальному серверу…');
     peer = new Peer(PEER_ICE_CONFIG);
     peer.on('open', () => {
+      logNet('Сигнальный сервер: подключено. Ищем соперника…', 'ok');
       conn = peer.connect(hostId, {reliable:true});
       isHost = false;
       setupConnectionHandlers();
+      attachIceMonitor(conn);
+      armConnectWatchdog();
       conn.on('open', onGuestConnected);
       conn.on('error', () => {
+        logNet('Ошибка соединения с соперником.', 'warn');
         inviteBtn.textContent = '⚠ Не удалось подключиться';
         setStatus('Не удалось подключиться', 'lose');
       });
     });
+    peer.on('disconnected', () => logNet('Отключён от сигнального сервера.', 'warn'));
     peer.on('error', err => {
+      logNet('Ошибка: ' + err.type, 'warn');
       inviteBtn.textContent = '⚠ Ошибка соединения';
       setStatus('Ошибка соединения: ' + err.type, 'lose');
     });
