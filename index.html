@@ -102,7 +102,7 @@
     text-decoration-thickness:2px; padding:4px;
   }
   .rematch-btn:disabled{opacity:.35; cursor:default; text-decoration:none;}
-  .rematch-btn.writing{animation:writeIn .7s cubic-bezier(.35,.6,.4,1) both;}
+  .rematch-btn.writing, .status.writing{animation:writeIn .7s cubic-bezier(.35,.6,.4,1) both;}
   @keyframes writeIn{
     from{clip-path:inset(0 100% 0 0);}
     to{clip-path:inset(0 0 0 0);}
@@ -376,15 +376,11 @@
   }
 
   // Кнопка «новая игра» выписывается слева направо, когда партия уже отыграна.
-  function showRematch(delay){
-    const round = roundId;
-    setTimeout(() => {
-      if(round !== roundId) return;
-      rematchBtn.style.display = 'block';
-      rematchBtn.classList.remove('writing');
-      void rematchBtn.offsetWidth;          // сброс анимации для повторного показа
-      rematchBtn.classList.add('writing');
-    }, delay);
+  function showRematch(){
+    rematchBtn.style.display = 'block';
+    rematchBtn.classList.remove('writing');
+    void rematchBtn.offsetWidth;            // сброс анимации для повторного показа
+    rematchBtn.classList.add('writing');
   }
 
   // ---------- Board ----------
@@ -409,9 +405,10 @@
   }
   function renderBoard(){ for(let i=0;i<9;i++) renderCell(i); }
 
-  function setStatus(text, cls){
+  function setStatus(text, cls, write){
     statusEl.textContent = text;
-    statusEl.className = 'status hand ' + cls;
+    statusEl.className = 'status hand ' + cls + (write ? ' writing' : '');
+    if(write){ void statusEl.offsetWidth; statusEl.classList.add('writing'); }
   }
 
   const WIN_LINES = [
@@ -459,26 +456,44 @@
     if(result){
       gameOver = true;
       board.classList.add('disabled');
+
+      let text, cls;
       if(result.draw){
-        setStatus('Ничья', 'draw');
+        text = 'Ничья'; cls = 'draw';
         score.draws++;
       } else if(solo){
         const xWon = result.symbol === 'X';
-        setStatus('Выиграли ' + (xWon ? 'крестики' : 'нолики'), xWon ? 'lose' : 'mine');
-        scheduleWinLine(result.line, result.symbol);
+        text = 'Выиграли ' + (xWon ? 'крестики' : 'нолики');
+        cls = xWon ? 'lose' : 'mine';
         if(xWon) score.mine++; else score.opp++;
       } else if(result.symbol === mySymbol){
-        setStatus('Вы выиграли!', 'win');
-        scheduleWinLine(result.line, result.symbol);
+        text = 'Вы выиграли!'; cls = 'win';
         score.mine++;
       } else {
-        setStatus('Соперник выиграл', 'lose');
-        scheduleWinLine(result.line, result.symbol);
+        text = 'Соперник выиграл'; cls = 'lose';
         score.opp++;
       }
-      updateScoreboard();
-      showRematch(result.draw ? 750 : 1500);   // ничья — сразу, победа — после штриха
+
+      // Ничья: объявляем сразу после последнего символа (штриха нет).
+      // Победа: ждём, пока поле перечеркнёт линия, и только потом подводим итог.
+      if(result.draw){
+        announceResult(text, cls, 800);
+      } else {
+        scheduleWinLine(result.line, result.symbol);
+        announceResult(text, cls, 1450);
+      }
     }
+  }
+
+  // Итог партии и кнопка «новая игра» появляются вместе, последним аккордом.
+  function announceResult(text, cls, delay){
+    const round = roundId;
+    setTimeout(() => {
+      if(round !== roundId) return;
+      setStatus(text, cls, true);
+      updateScoreboard();
+      showRematch();
+    }, delay);
   }
 
   function updateTurnStatus(){
