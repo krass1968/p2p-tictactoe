@@ -221,7 +221,7 @@
       <div id="secret" class="secret"></div>
       <div id="resetSpot" class="reset-spot"></div>
       <div id="glassSpot" class="glass-spot"></div>
-      <div class="version">v1.2</div>
+      <div class="version">v1.3</div>
     </div>
   </div>
 
@@ -543,11 +543,13 @@
   function eraseCell(i){
     const round = roundId;
     const el = board.children[i];
+    cells[i] = null;                  // из правил фигура выбывает мгновенно…
+    el.classList.remove('filled');    // …клетка сразу снова свободна для хода
     el.classList.add('erasing');
     setTimeout(() => {
       if(round !== roundId) return;
-      cells[i] = null;
-      renderCell(i);
+      if(cells[i]) return;            // клетку успели занять заново — не трогаем
+      renderCell(i);                  // …а на экране она просто дорастворяется
     }, 500);
   }
 
