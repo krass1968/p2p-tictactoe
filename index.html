@@ -62,6 +62,13 @@
     -webkit-tap-highlight-color:transparent;
   }
 
+  /* Ластик: стирает партию — перезапуск, если соперник отвалился и всё подвисло. */
+  .reset-spot{
+    position:absolute; left:37.5%; top:0%; width:9%; height:8.5%;
+    border-radius:10%; cursor:default; z-index:5;
+    -webkit-tap-highlight-color:transparent;
+  }
+
   .version{
     position:absolute; left:1.6%; bottom:2.4%;
     font-size:clamp(10px,.95vw,15px); font-weight:500;
@@ -71,7 +78,7 @@
 
   /* ---- надписи и панели: на десктопе лежат прямо на фото ---- */
   .status{
-    position:absolute; left:45.63%; top:25.5%; width:20.77%;
+    position:absolute; left:45.63%; top:72.3%; width:20.77%;
     text-align:center; font-size:clamp(15px,2.05vw,30px); font-weight:700;
     color:var(--ink-dark); line-height:1.1; margin:0;
   }
@@ -88,7 +95,7 @@
   }
 
   .rematch-btn{
-    position:absolute; left:45.63%; top:75.4%; width:20.77%;
+    position:absolute; left:45.63%; top:26.5%; width:20.77%;
     display:none; border:none; background:none; cursor:pointer;
     font-family:'Caveat',cursive; font-size:clamp(14px,1.9vw,28px); font-weight:700;
     color:var(--ink-o); text-decoration:underline; text-underline-offset:5px;
@@ -134,9 +141,9 @@
       position:static; left:auto; top:auto; width:auto; transform:none;
     }
     .hud{padding:14px 18px 34px; display:flex; flex-direction:column; align-items:center; gap:10px;}
-    .status{font-size:26px; order:1;}
+    .status{font-size:26px; order:2;}
     .under-note{font-size:17px; order:2;}
-    .rematch-btn{font-size:24px; order:3;}
+    .rematch-btn{font-size:24px; order:1;}
     .score{width:100%; max-width:340px; order:4; background:rgba(243,236,216,.94);
            border-radius:8px; padding:12px 16px; margin-top:6px;}
     .score .ttl{font-size:24px;}
@@ -185,6 +192,7 @@
       <div id="grid" class="grid disabled"></div>
       <svg id="winline" class="winline" viewBox="0 0 300 300" preserveAspectRatio="none"></svg>
       <div id="secret" class="secret"></div>
+      <div id="resetSpot" class="reset-spot"></div>
       <div class="version">v1.0</div>
     </div>
   </div>
@@ -286,7 +294,6 @@
                ' Q ' + rnd(46,54) + ',' + rnd(44,56) + ' ' + rnd(18,24) + ',' + rnd(76,82);
     svg.appendChild(mk(d1));
     svg.appendChild(mk(d2));
-    animate(svg);
     return svg;
   }
 
@@ -314,19 +321,19 @@
     p.setAttribute('stroke-linecap','round');
     p.setAttribute('stroke-linejoin','round');
     svg.appendChild(p);
-    animate(svg);
     return svg;
   }
 
   function animate(svg){
-    requestAnimationFrame(() => {
-      svg.querySelectorAll('path').forEach((p, i) => {
-        const len = p.getTotalLength();
-        p.style.strokeDasharray = len;
-        p.style.strokeDashoffset = len;
-        p.style.transition = 'stroke-dashoffset .28s ease-out ' + (i*0.16) + 's';
-        requestAnimationFrame(() => { p.style.strokeDashoffset = '0'; });
-      });
+    svg.querySelectorAll('path').forEach((p, i) => {
+      let len = 0;
+      try { len = p.getTotalLength(); } catch(e){}
+      if(!len) len = 300;
+      p.style.strokeDasharray = len;
+      p.style.strokeDashoffset = len;
+      p.getBoundingClientRect();          // принудительный пересчёт стиля перед стартом
+      p.style.transition = 'stroke-dashoffset .45s cubic-bezier(.3,.55,.35,1) ' + (i*0.22) + 's';
+      p.style.strokeDashoffset = '0';
     });
   }
 
@@ -365,7 +372,11 @@
     const v = cells[i];
     el.innerHTML = '';
     el.className = 'cell' + (v ? ' filled' : '');
-    if(v) el.appendChild(v === 'X' ? drawX() : drawO());
+    if(v){
+      const svg = (v === 'X') ? drawX() : drawO();
+      el.appendChild(svg);
+      animate(svg);                        // только после вставки — иначе длина линии = 0
+    }
   }
   function renderBoard(){ for(let i=0;i<9;i++) renderCell(i); }
 
@@ -437,7 +448,7 @@
         score.opp++;
       }
       updateScoreboard();
-      rematchBtn.disabled = false;
+      rematchBtn.style.display = 'block';   // показываем только когда партия окончена
     }
   }
 
@@ -466,7 +477,7 @@
     myTurn = (mySymbol === 'X');
     updateTurnStatus();
     showRole();
-    rematchBtn.disabled = true;
+    rematchBtn.style.display = 'none';
   }
 
   // Бумажка справа внизу: до начала игры — приглашение, в игре — за кого играешь.
@@ -492,7 +503,7 @@
     renderBoard();
     soloTurn = 'X';
     board.classList.remove('disabled');
-    rematchBtn.disabled = true;
+    rematchBtn.style.display = 'none';
     updateTurnStatus();
   }
 
@@ -502,7 +513,6 @@
     if(solo){
       mySymbol = null;
       scoreboard.style.display = 'block';
-      rematchBtn.style.display = 'block';
       resetScore();
       inviteBtn.textContent = 'режим отладки';
       inviteBtn.classList.add('connected');
@@ -525,6 +535,12 @@
   }
 
   document.getElementById('secret').addEventListener('click', toggleSolo);
+
+  // Полный перезапуск: сбрасываем ссылку с ?room= и грузим страницу заново.
+  document.getElementById('resetSpot').addEventListener('click', () => {
+    if(opponentId) return;                 // идёт живая партия — не трогаем
+    location.href = location.origin + location.pathname;
+  });
 
   // ---------- Messaging ----------
   function send(obj){
@@ -577,7 +593,6 @@
 
   function onOpponentJoined(){
     modalBackdrop.classList.remove('show');
-    rematchBtn.style.display = 'block';
     scoreboard.style.display = 'block';
     resetScore();
     if(isHost){
@@ -699,7 +714,7 @@
   rematchBtn.addEventListener('click', () => {
     if(solo){ soloReset(); return; }
     if(!client || !opponentId) return;
-    rematchBtn.disabled = true;
+    rematchBtn.style.display = 'none';
     if(isHost) hostAssignAndStart();
     else send({type:'request_rematch'});
   });
