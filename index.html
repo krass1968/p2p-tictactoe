@@ -41,12 +41,6 @@
     display:grid; grid-template-columns:repeat(3,1fr); grid-template-rows:repeat(3,1fr);
   }
   .cell{position:relative; cursor:pointer;}
-  .cell::after{
-    content:''; position:absolute; inset:6%;
-    border-radius:50%; background:rgba(40,60,140,.07);
-    opacity:0; transition:opacity .15s ease;
-  }
-  .grid:not(.disabled) .cell:not(.filled):hover::after{opacity:1;}
   .cell.filled{cursor:default;}
   .cell svg{position:absolute; inset:0; width:100%; height:100%; overflow:visible;}
   .winline{
@@ -83,9 +77,12 @@
     pointer-events:none;
   }
 
-  /* Фигура, которая исчезнет следующим ходом. */
-  .cell.fading svg{animation:fadeOut 1.15s ease-in-out infinite;}
-  @keyframes fadeOut{0%,100%{opacity:1;}50%{opacity:.22;}}
+  /* Старая фигура не пропадает рывком, а выцветает, как стёртая. */
+  .cell.erasing svg{animation:erase .5s ease-in forwards;}
+  @keyframes erase{
+    from{opacity:1;}
+    to{opacity:0;}
+  }
 
   .version{
     position:absolute; left:1.6%; bottom:2.4%;
@@ -428,6 +425,7 @@
     const el = board.children[i];
     const v = cells[i];
     el.innerHTML = '';
+    el.classList.remove('erasing');
     el.className = 'cell' + (v ? ' filled' : '');
     if(v){
       const svg = (v === 'X') ? drawX() : drawO();
@@ -488,9 +486,8 @@
     if(infinite){
       history[symbol].push(i);
       if(history[symbol].length > 3){
-        const gone = history[symbol].shift();   // самая старая фигура стирается
-        cells[gone] = null;
-        renderCell(gone);
+        const gone = history[symbol].shift();   // самая старая фигура выцветает
+        eraseCell(gone);
       }
     }
 
@@ -542,20 +539,19 @@
     modeLabel.style.display = infinite ? 'block' : 'none';
   }
 
-  // Мигает та фигура, которая исчезнет следующим ходом своего хозяина.
-  function updateFading(){
-    for(let i=0;i<9;i++) board.children[i].classList.remove('fading');
-    if(!infinite || gameOver) return;
-    const nextSym = solo ? soloTurn
-                         : (mySymbol ? (myTurn ? mySymbol : (mySymbol === 'X' ? 'O' : 'X')) : null);
-    if(!nextSym) return;
-    if(history[nextSym].length === 3){
-      board.children[history[nextSym][0]].classList.add('fading');
-    }
+  // Фигура выцветает на месте, и лишь затем клетка освобождается.
+  function eraseCell(i){
+    const round = roundId;
+    const el = board.children[i];
+    el.classList.add('erasing');
+    setTimeout(() => {
+      if(round !== roundId) return;
+      cells[i] = null;
+      renderCell(i);
+    }, 500);
   }
 
   function updateTurnStatus(){
-    updateFading();
     if(gameOver) return;
     if(solo){
       setStatus('Ход ' + (soloTurn === 'X' ? 'крестиков' : 'ноликов'),
@@ -741,7 +737,6 @@
     cells = Array(9).fill(null);
     winlineSvg.innerHTML = '';
     renderBoard();
-    board.querySelectorAll('.cell').forEach(c => c.classList.remove('fading'));
     board.classList.add('disabled');
 
     resetScore();
