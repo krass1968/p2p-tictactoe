@@ -64,7 +64,7 @@
 
   /* Ластик: стирает партию — перезапуск, если соперник отвалился и всё подвисло. */
   .reset-spot{
-    position:absolute; left:37.5%; top:0%; width:9%; height:8.5%;
+    position:absolute; left:40%; top:0%; width:9%; height:8.5%;
     border-radius:10%; cursor:default; z-index:5;
     -webkit-tap-highlight-color:transparent;
   }
@@ -198,7 +198,7 @@
       <svg id="winline" class="winline" viewBox="0 0 300 300" preserveAspectRatio="none"></svg>
       <div id="secret" class="secret"></div>
       <div id="resetSpot" class="reset-spot"></div>
-      <div class="version">v1.0</div>
+      <div class="version">v1.1</div>
     </div>
   </div>
 
@@ -505,10 +505,10 @@
       return;
     }
     if(myTurn){
-      setStatus('Ваш ход', 'mine');
+      setStatus('Ваш ход!', 'mine');
       board.classList.remove('disabled');
     } else {
-      setStatus('Соперник ходит', 'theirs');
+      setStatus('', 'theirs');       // очередь соперника — лист остаётся чистым
       board.classList.add('disabled');
     }
   }
