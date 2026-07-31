@@ -78,7 +78,7 @@
 
   /* ---- надписи и панели: на десктопе лежат прямо на фото ---- */
   .status{
-    position:absolute; left:45.63%; top:72.3%; width:20.77%;
+    position:absolute; left:45.63%; top:80%; width:20.77%;
     text-align:center; font-size:clamp(15px,2.05vw,30px); font-weight:700;
     color:var(--ink-dark); line-height:1.1; margin:0;
   }
@@ -95,7 +95,7 @@
   }
 
   .rematch-btn{
-    position:absolute; left:45.63%; top:26.5%; width:20.77%;
+    position:absolute; left:45.63%; top:21.5%; width:20.77%;
     display:none; border:none; background:none; cursor:pointer;
     font-family:'Caveat',cursive; font-size:clamp(14px,1.9vw,28px); font-weight:700;
     color:var(--ink-o); text-decoration:underline; text-underline-offset:5px;
@@ -104,7 +104,7 @@
   .rematch-btn:disabled{opacity:.35; cursor:default; text-decoration:none;}
 
   .score{
-    position:absolute; left:26.2%; top:32%; width:16.5%;
+    position:absolute; left:30.5%; top:32%; width:14%;
     display:none; color:var(--ink-dark);
   }
   .score .ttl{
@@ -115,7 +115,7 @@
     display:flex; align-items:baseline; gap:.45em;
     font-size:clamp(13px,1.75vw,26px); line-height:1.5;
   }
-  .score .row .lbl{min-width:4.9em;}
+  .score .row .lbl{min-width:4.6em;}
   .score .row .n{font-weight:700;}
   .score .row.me .n{color:var(--ink-o);}
   .score .row.op .n{color:var(--ink-x);}
@@ -198,7 +198,7 @@
   </div>
 
   <div class="hud">
-    <p id="status" class="status hand waiting">Пригласите друга</p>
+    <p id="status" class="status hand waiting"></p>
     <button id="rematchBtn" class="rematch-btn">новая игра</button>
 
     <div id="scorePanel" class="score hand">
@@ -266,6 +266,7 @@
   let opponentId = null;
   let solo = false;          // режим игры с самим собой
   let soloTurn = 'X';
+  let roundId = 0;           // защита от отложенной отрисовки в новой партии
   let brokerIndex = 0;
   let connectTimer = null;
   let peerWatchdog = null;
@@ -324,7 +325,9 @@
     return svg;
   }
 
-  function animate(svg){
+  function animate(svg, dur, gap){
+    dur = dur || 0.45;
+    gap = (gap === undefined) ? 0.22 : gap;
     svg.querySelectorAll('path').forEach((p, i) => {
       let len = 0;
       try { len = p.getTotalLength(); } catch(e){}
@@ -332,7 +335,7 @@
       p.style.strokeDasharray = len;
       p.style.strokeDashoffset = len;
       p.getBoundingClientRect();          // принудительный пересчёт стиля перед стартом
-      p.style.transition = 'stroke-dashoffset .45s cubic-bezier(.3,.55,.35,1) ' + (i*0.22) + 's';
+      p.style.transition = 'stroke-dashoffset ' + dur + 's cubic-bezier(.3,.55,.35,1) ' + (i*gap) + 's';
       p.style.strokeDashoffset = '0';
     });
   }
@@ -355,7 +358,16 @@
     p.setAttribute('stroke-width','5');
     p.setAttribute('stroke-linecap','round');
     winlineSvg.appendChild(p);
-    animate(winlineSvg);
+    animate(winlineSvg, 0.32, 0);
+  }
+
+  // Символ рисуется ~0.67 с; ждём чуть дольше, чтобы штрих лёг уже поверх готовой фигуры.
+  function scheduleWinLine(line, symbol){
+    const round = roundId;
+    setTimeout(() => {
+      if(round !== roundId) return;      // партию успели сбросить
+      drawWinLine(line, symbol);
+    }, 950);
   }
 
   // ---------- Board ----------
@@ -436,15 +448,15 @@
       } else if(solo){
         const xWon = result.symbol === 'X';
         setStatus('Выиграли ' + (xWon ? 'крестики' : 'нолики'), xWon ? 'lose' : 'mine');
-        drawWinLine(result.line, result.symbol);
+        scheduleWinLine(result.line, result.symbol);
         if(xWon) score.mine++; else score.opp++;
       } else if(result.symbol === mySymbol){
         setStatus('Вы выиграли!', 'win');
-        drawWinLine(result.line, result.symbol);
+        scheduleWinLine(result.line, result.symbol);
         score.mine++;
       } else {
         setStatus('Соперник выиграл', 'lose');
-        drawWinLine(result.line, result.symbol);
+        scheduleWinLine(result.line, result.symbol);
         score.opp++;
       }
       updateScoreboard();
@@ -470,6 +482,7 @@
   }
 
   function resetGame(){
+    roundId++;
     cells = Array(9).fill(null);
     gameOver = false;
     winlineSvg.innerHTML = '';
@@ -497,6 +510,7 @@
 
   // ---------- Секретный режим: игра с самим собой ----------
   function soloReset(){
+    roundId++;
     cells = Array(9).fill(null);
     gameOver = false;
     winlineSvg.innerHTML = '';
@@ -530,7 +544,7 @@
       inviteBtn.classList.remove('connected');
       inviteBtn.disabled = false;
       inviteBtn.textContent = client ? '🔗 Показать ссылку' : '🔗 Пригласить друга';
-      setStatus(client ? 'Ожидание соперника' : 'Пригласите друга', 'waiting');
+      setStatus(client ? 'Ожидание соперника' : '', 'waiting');
     }
   }
 
