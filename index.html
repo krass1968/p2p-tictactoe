@@ -19,10 +19,10 @@
   *{box-sizing:border-box;}
   html,body{margin:0; padding:0;}
   body{
-    background:#2b2118;
+    background:#0f0f10;
     font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
-    display:flex; justify-content:center;
-    padding:0;
+    display:flex; justify-content:center; align-items:center;
+    min-height:100vh; padding:0;
   }
   .hand{font-family:'Caveat',"Segoe Script","Bradley Hand",cursive;}
 
@@ -49,7 +49,25 @@
   .grid:not(.disabled) .cell:not(.filled):hover::after{opacity:1;}
   .cell.filled{cursor:default;}
   .cell svg{position:absolute; inset:0; width:100%; height:100%; overflow:visible;}
-  .winline{position:absolute; inset:0; pointer-events:none; overflow:visible;}
+  .winline{
+    position:absolute;
+    left:45.63%; top:33.07%; width:20.77%; height:37.37%;
+    pointer-events:none; overflow:visible;
+  }
+
+  /* Секретная зона: центр телефонного диска. Ничем себя не выдаёт. */
+  .secret{
+    position:absolute; left:19.4%; top:5.3%; width:4.5%; height:8.25%;
+    border-radius:50%; cursor:default; z-index:5;
+    -webkit-tap-highlight-color:transparent;
+  }
+
+  .version{
+    position:absolute; left:1.6%; bottom:2.4%;
+    font-size:clamp(10px,.95vw,15px); font-weight:500;
+    color:rgba(35,26,18,.6); letter-spacing:.04em;
+    text-shadow:0 1px 2px rgba(255,245,225,.35); pointer-events:none;
+  }
 
   /* ---- надписи и панели: на десктопе лежат прямо на фото ---- */
   .status{
@@ -87,10 +105,11 @@
     border-bottom:2px solid rgba(34,48,107,.55); display:inline-block; padding-right:1.2em;
   }
   .score .row{
-    display:flex; justify-content:space-between; align-items:baseline;
+    display:flex; align-items:baseline; gap:.45em;
     font-size:clamp(13px,1.75vw,26px); line-height:1.5;
   }
-  .score .row .n{font-weight:700; min-width:1.4em; text-align:right;}
+  .score .row .lbl{min-width:4.9em;}
+  .score .row .n{font-weight:700;}
   .score .row.me .n{color:var(--ink-o);}
   .score .row.op .n{color:var(--ink-x);}
 
@@ -108,7 +127,7 @@
 
   /* ---- телефон: кадрируем фото на сетку, панели выносим вниз ---- */
   @media (max-width:760px){
-    body{background:#241b14; flex-direction:column;}
+    body{background:#0f0f10; flex-direction:column; align-items:stretch; min-height:100vh;}
     .stage{height:93vw;}
     .scene{position:absolute; width:380vw; aspect-ratio:2816/1536; left:-162.9vw; top:-60.5vw;}
     .status, .under-note, .rematch-btn, .score, .invite-btn{
@@ -123,6 +142,7 @@
     .score .ttl{font-size:24px;}
     .score .row{font-size:20px;}
     .invite-btn{order:5; width:100%; max-width:340px; font-size:24px; padding:14px;}
+    .version{position:static; order:6; color:rgba(255,240,215,.4); text-shadow:none; font-size:13px; margin-top:4px;}
   }
   @media (min-width:761px){
     .hud{display:contents;}
@@ -164,19 +184,20 @@
     <div class="scene">
       <div id="grid" class="grid disabled"></div>
       <svg id="winline" class="winline" viewBox="0 0 300 300" preserveAspectRatio="none"></svg>
+      <div id="secret" class="secret"></div>
+      <div class="version">v1.0</div>
     </div>
   </div>
 
   <div class="hud">
     <p id="status" class="status hand waiting">Пригласите друга</p>
-    <div id="infoLine" class="under-note hand"></div>
     <button id="rematchBtn" class="rematch-btn">новая игра</button>
 
     <div id="scorePanel" class="score hand">
       <div class="ttl">Счёт</div>
-      <div class="row me"><span>Вы</span><span class="n" id="scoreMine">0</span></div>
-      <div class="row"><span>Ничьи</span><span class="n" id="scoreDraws">0</span></div>
-      <div class="row op"><span>Соперник</span><span class="n" id="scoreOpp">0</span></div>
+      <div class="row me"><span class="lbl">Вы</span><span class="n" id="scoreMine">0</span></div>
+      <div class="row"><span class="lbl">Ничьи</span><span class="n" id="scoreDraws">0</span></div>
+      <div class="row op"><span class="lbl">Соперник</span><span class="n" id="scoreOpp">0</span></div>
     </div>
 
     <button id="inviteBtn" class="invite-btn">🔗 Пригласить друга</button>
@@ -206,7 +227,6 @@
   const inviteLinkInput = document.getElementById('inviteLink');
   const copyBtn = document.getElementById('copyBtn');
   const closeModal = document.getElementById('closeModal');
-  const infoLine = document.getElementById('infoLine');
   const rematchBtn = document.getElementById('rematchBtn');
   const scoreboard = document.getElementById('scorePanel');
   const scoreMineEl = document.getElementById('scoreMine');
@@ -236,6 +256,8 @@
   let roomCode = null;
   const myId = Math.random().toString(36).slice(2, 10);
   let opponentId = null;
+  let solo = false;          // режим игры с самим собой
+  let soloTurn = 'X';
   let brokerIndex = 0;
   let connectTimer = null;
   let peerWatchdog = null;
@@ -308,7 +330,7 @@
     });
   }
 
-  function drawWinLine(line){
+  function drawWinLine(line, symbol){
     const [a,,c] = line;
     const cw = 100, ch = 100;
     const pos = i => ({ x:(i%3)*cw + cw/2, y:Math.floor(i/3)*ch + ch/2 });
@@ -322,7 +344,7 @@
     const p = document.createElementNS('http://www.w3.org/2000/svg','path');
     p.setAttribute('d', d);
     p.setAttribute('fill','none');
-    p.setAttribute('stroke','var(--ink-x)');
+    p.setAttribute('stroke', symbol === 'X' ? 'var(--ink-x)' : 'var(--ink-o)');
     p.setAttribute('stroke-width','5');
     p.setAttribute('stroke-linecap','round');
     winlineSvg.appendChild(p);
@@ -375,6 +397,14 @@
   function resetScore(){ score = {mine:0, opp:0, draws:0}; updateScoreboard(); }
 
   function onCellClick(i){
+    if(solo){
+      if(gameOver || cells[i]) return;
+      const sym = soloTurn;
+      soloTurn = (soloTurn === 'X') ? 'O' : 'X';
+      applyMove(i, sym);
+      updateTurnStatus();
+      return;
+    }
     if(gameOver || !myTurn || cells[i] || !client) return;
     applyMove(i, mySymbol);
     send({type:'move', index:i, symbol:mySymbol});
@@ -392,13 +422,18 @@
       if(result.draw){
         setStatus('Ничья', 'draw');
         score.draws++;
+      } else if(solo){
+        const xWon = result.symbol === 'X';
+        setStatus('Выиграли ' + (xWon ? 'крестики' : 'нолики'), xWon ? 'lose' : 'mine');
+        drawWinLine(result.line, result.symbol);
+        if(xWon) score.mine++; else score.opp++;
       } else if(result.symbol === mySymbol){
         setStatus('Вы выиграли!', 'win');
-        drawWinLine(result.line);
+        drawWinLine(result.line, result.symbol);
         score.mine++;
       } else {
         setStatus('Соперник выиграл', 'lose');
-        drawWinLine(result.line);
+        drawWinLine(result.line, result.symbol);
         score.opp++;
       }
       updateScoreboard();
@@ -408,6 +443,12 @@
 
   function updateTurnStatus(){
     if(gameOver) return;
+    if(solo){
+      setStatus('Ход ' + (soloTurn === 'X' ? 'крестиков' : 'ноликов'),
+                soloTurn === 'X' ? 'lose' : 'mine');
+      board.classList.remove('disabled');
+      return;
+    }
     if(myTurn){
       setStatus('Ваш ход', 'mine');
       board.classList.remove('disabled');
@@ -424,8 +465,16 @@
     renderBoard();
     myTurn = (mySymbol === 'X');
     updateTurnStatus();
-    infoLine.textContent = 'вы играете за ' + (mySymbol === 'X' ? 'крестики' : 'нолики');
+    showRole();
     rematchBtn.disabled = true;
+  }
+
+  // Бумажка справа внизу: до начала игры — приглашение, в игре — за кого играешь.
+  function showRole(){
+    if(!mySymbol) return;
+    inviteBtn.textContent = 'Вы играете ' + (mySymbol === 'X' ? 'крестиками' : 'ноликами');
+    inviteBtn.classList.add('connected');
+    inviteBtn.disabled = true;
   }
 
   function hostAssignAndStart(){
@@ -434,6 +483,48 @@
     send({type:'assign', symbol: hostIsX ? 'O' : 'X'});
     resetGame();
   }
+
+  // ---------- Секретный режим: игра с самим собой ----------
+  function soloReset(){
+    cells = Array(9).fill(null);
+    gameOver = false;
+    winlineSvg.innerHTML = '';
+    renderBoard();
+    soloTurn = 'X';
+    board.classList.remove('disabled');
+    rematchBtn.disabled = true;
+    updateTurnStatus();
+  }
+
+  function toggleSolo(){
+    if(opponentId) return;            // идёт настоящая партия — не мешаем
+    solo = !solo;
+    if(solo){
+      mySymbol = null;
+      scoreboard.style.display = 'block';
+      rematchBtn.style.display = 'block';
+      resetScore();
+      inviteBtn.textContent = 'режим отладки';
+      inviteBtn.classList.add('connected');
+      inviteBtn.disabled = true;
+      soloReset();
+    } else {
+      cells = Array(9).fill(null);
+      gameOver = false;
+      winlineSvg.innerHTML = '';
+      renderBoard();
+      board.classList.add('disabled');
+      resetScore();
+      scoreboard.style.display = 'none';
+      rematchBtn.style.display = 'none';
+      inviteBtn.classList.remove('connected');
+      inviteBtn.disabled = false;
+      inviteBtn.textContent = client ? '🔗 Показать ссылку' : '🔗 Пригласить друга';
+      setStatus(client ? 'Ожидание соперника' : 'Пригласите друга', 'waiting');
+    }
+  }
+
+  document.getElementById('secret').addEventListener('click', toggleSolo);
 
   // ---------- Messaging ----------
   function send(obj){
@@ -485,9 +576,6 @@
   }
 
   function onOpponentJoined(){
-    inviteBtn.textContent = '✓ Соперник в игре';
-    inviteBtn.classList.add('connected');
-    inviteBtn.disabled = true;
     modalBackdrop.classList.remove('show');
     rematchBtn.style.display = 'block';
     scoreboard.style.display = 'block';
@@ -495,6 +583,10 @@
     if(isHost){
       send({type:'welcome'});
       hostAssignAndStart();
+    } else {
+      inviteBtn.textContent = 'Соперник в игре';
+      inviteBtn.classList.add('connected');
+      inviteBtn.disabled = true;
     }
   }
 
@@ -512,15 +604,14 @@
     resetScore();
     scoreboard.style.display = 'none';
     rematchBtn.style.display = 'none';
-    infoLine.textContent = '';
 
     inviteBtn.classList.remove('connected');
+    inviteBtn.disabled = false;
     if(isHost){
-      inviteBtn.disabled = false;
-      inviteBtn.textContent = '🔗 Пригласить друга';
+      inviteBtn.textContent = '🔗 Показать ссылку';
       setStatus('Соперник ушёл — позовите снова', 'waiting');
     } else {
-      inviteBtn.textContent = '⏳ Ожидание соперника…';
+      inviteBtn.textContent = '🔗 Пригласить друга';
       setStatus('Соперник отключился', 'waiting');
     }
   }
@@ -574,7 +665,8 @@
       const url = location.origin + location.pathname + '?room=' + roomCode;
       inviteLinkInput.value = url;
       modalBackdrop.classList.add('show');
-      inviteBtn.textContent = '⏳ Ожидание соперника…';
+      inviteBtn.disabled = false;
+      inviteBtn.textContent = '🔗 Показать ссылку';
       setStatus('Ожидание соперника', 'waiting');
     } else {
       logNet('Ищем соперника в комнате');
@@ -605,6 +697,7 @@
   });
 
   rematchBtn.addEventListener('click', () => {
+    if(solo){ soloReset(); return; }
     if(!client || !opponentId) return;
     rematchBtn.disabled = true;
     if(isHost) hostAssignAndStart();
