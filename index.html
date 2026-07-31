@@ -85,17 +85,6 @@
 
   .info{margin-top:16px; text-align:center; font-size:13px; color:var(--muted); line-height:1.5;}
 
-  .net-debug{
-    display:none; margin-top:14px; background:#f7f8fa; border:1px solid var(--cell-border);
-    border-radius:12px; padding:10px 12px;
-    font-family:ui-monospace,SFMono-Regular,Consolas,monospace;
-    font-size:11px; line-height:1.6; color:#5b6270;
-    max-height:150px; overflow-y:auto; text-align:left;
-  }
-  .net-debug.show{display:block;}
-  .net-debug .warn{color:var(--red); font-weight:700;}
-  .net-debug .ok{color:var(--green); font-weight:700;}
-
   .scoreboard{
     display:none; align-items:stretch; justify-content:space-between;
     background:var(--card); border:1px solid var(--cell-border); border-radius:16px;
@@ -149,7 +138,7 @@
   <div class="title-row">
     <div class="icons"><span class="x">✕</span><span class="o">◯</span></div>
     <h1>Крестики-Нолики</h1>
-    <span class="ver">v4.0</span>
+    <span class="ver">v4.1</span>
   </div>
 
   <div class="card">
@@ -157,7 +146,6 @@
     <div id="board" class="board disabled"></div>
     <button id="rematchBtn" class="rematch-btn">🔄 Новая игра</button>
     <div class="info" id="infoLine"></div>
-    <div class="net-debug" id="netDebug"></div>
   </div>
 
   <div class="scoreboard" id="scoreboard">
@@ -192,7 +180,6 @@
   const closeModal = document.getElementById('closeModal');
   const infoLine = document.getElementById('infoLine');
   const rematchBtn = document.getElementById('rematchBtn');
-  const netDebug = document.getElementById('netDebug');
   const scoreboard = document.getElementById('scoreboard');
   const scoreMineEl = document.getElementById('scoreMine');
   const scoreOppEl = document.getElementById('scoreOpp');
@@ -228,15 +215,9 @@
   let peerWatchdog = null;
 
   // ---------- Logging ----------
-  function logNet(msg, cls){
-    netDebug.classList.add('show');
-    const line = document.createElement('div');
-    if(cls) line.className = cls;
-    const t = new Date().toLocaleTimeString('ru-RU', {hour:'2-digit', minute:'2-digit', second:'2-digit'});
-    line.textContent = '[' + t + '] ' + msg;
-    netDebug.appendChild(line);
-    while(netDebug.children.length > 10) netDebug.removeChild(netDebug.firstChild);
-    netDebug.scrollTop = netDebug.scrollHeight;
+  function logNet(msg){
+    // Диагностика ушла в консоль браузера (F12) — на экране больше не мозолит глаза.
+    console.log('[net] ' + msg);
   }
 
   // ---------- Board ----------
