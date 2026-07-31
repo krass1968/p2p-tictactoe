@@ -102,6 +102,11 @@
     text-decoration-thickness:2px; padding:4px;
   }
   .rematch-btn:disabled{opacity:.35; cursor:default; text-decoration:none;}
+  .rematch-btn.writing{animation:writeIn .7s cubic-bezier(.35,.6,.4,1) both;}
+  @keyframes writeIn{
+    from{clip-path:inset(0 100% 0 0);}
+    to{clip-path:inset(0 0 0 0);}
+  }
 
   .score{
     position:absolute; left:30.5%; top:32%; width:14%;
@@ -370,6 +375,18 @@
     }, 950);
   }
 
+  // Кнопка «новая игра» выписывается слева направо, когда партия уже отыграна.
+  function showRematch(delay){
+    const round = roundId;
+    setTimeout(() => {
+      if(round !== roundId) return;
+      rematchBtn.style.display = 'block';
+      rematchBtn.classList.remove('writing');
+      void rematchBtn.offsetWidth;          // сброс анимации для повторного показа
+      rematchBtn.classList.add('writing');
+    }, delay);
+  }
+
   // ---------- Board ----------
   for(let i=0;i<9;i++){
     const c = document.createElement('div');
@@ -460,7 +477,7 @@
         score.opp++;
       }
       updateScoreboard();
-      rematchBtn.style.display = 'block';   // показываем только когда партия окончена
+      showRematch(result.draw ? 750 : 1500);   // ничья — сразу, победа — после штриха
     }
   }
 
@@ -518,6 +535,7 @@
     soloTurn = 'X';
     board.classList.remove('disabled');
     rematchBtn.style.display = 'none';
+    rematchBtn.classList.remove('writing');
     updateTurnStatus();
   }
 
@@ -551,8 +569,9 @@
   document.getElementById('secret').addEventListener('click', toggleSolo);
 
   // Полный перезапуск: сбрасываем ссылку с ?room= и грузим страницу заново.
+  // Работает всегда, в том числе посреди партии: если соперник отвалился жёстко
+  // (закрыл ноутбук, пропала сеть), уведомление может не дойти и статус зависнет.
   document.getElementById('resetSpot').addEventListener('click', () => {
-    if(opponentId) return;                 // идёт живая партия — не трогаем
     location.href = location.origin + location.pathname;
   });
 
